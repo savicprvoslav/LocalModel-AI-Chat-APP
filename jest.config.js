@@ -12,7 +12,9 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^expo-sqlite$': '<rootDir>/__mocks__/expo-sqlite.ts',
-    '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts'
+    '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts',
+    '^expo-file-system$': '<rootDir>/__mocks__/expo-file-system.ts',
+    '^expo-file-system/legacy$': '<rootDir>/__mocks__/expo-file-system.ts'
   },
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
   transform: {
