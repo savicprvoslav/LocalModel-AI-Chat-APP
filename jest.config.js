@@ -10,7 +10,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^expo-sqlite$': '<rootDir>/__mocks__/expo-sqlite.ts',
+    '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts'
   },
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
   transform: {
