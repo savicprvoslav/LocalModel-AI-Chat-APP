@@ -1,11 +1,20 @@
+/**
+ * Jest configuration.
+ *
+ * For v1 we use ts-jest with the `node` environment for all tests.
+ * Pure-logic tests (engine, db, model, chat) need no RN context — they
+ * run fast in Node. Component tests can be added later with a separate
+ * project entry that uses jest-expo if needed.
+ */
 module.exports = {
-  preset: 'jest-expo',
-  setupFiles: ['<rootDir>/jest-setup.ts'],
-  transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|react-native-markdown-display|llama\\.rn))'
-  ],
+  preset: 'ts-jest',
+  testEnvironment: 'node',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1'
   },
-  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx']
+  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { jsx: 'react-jsx', esModuleInterop: true } }]
+  },
+  testPathIgnorePatterns: ['/node_modules/', '/ios/', '/android/']
 };
