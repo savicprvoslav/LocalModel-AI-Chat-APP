@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './ui/theme/ThemeProvider';
 import { initDb } from './db/db';
 
@@ -19,5 +20,9 @@ export const AppProviders = ({ children }: Props) => {
     console.error('[providers] db init failed:', error);
   }
   if (!ready) return null;
-  return <ThemeProvider>{children}</ThemeProvider>;
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>{children}</ThemeProvider>
+    </SafeAreaProvider>
+  );
 };

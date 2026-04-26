@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { StatusLine, StatusLineState } from './StatusLine';
 import { hapticImpactLight } from '@/haptics';
@@ -22,6 +23,7 @@ export const Composer = ({
   placeholder = 'message'
 }: Props) => {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
 
   const liveStatus: StatusLineState =
@@ -61,7 +63,7 @@ export const Composer = ({
           alignItems: 'center',
           paddingHorizontal: t.spacing.md,
           paddingTop: t.spacing.xs,
-          paddingBottom: t.spacing.md,
+          paddingBottom: t.spacing.md + insets.bottom,
           gap: t.spacing.sm
         }}
       >
