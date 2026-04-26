@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
@@ -12,6 +12,8 @@ type Props = {
   onSend: (text: string) => void;
   onStop?: () => void;
   placeholder?: string;
+  /** Initial text to seed the composer (e.g., from a skill's starter_text). */
+  initialValue?: string;
 };
 
 export const Composer = ({
@@ -20,11 +22,21 @@ export const Composer = ({
   isStreaming,
   onSend,
   onStop,
-  placeholder = 'message'
+  placeholder = 'message',
+  initialValue
 }: Props) => {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initialValue ?? '');
+
+  // Seed once when initialValue first becomes available.
+  useEffect(() => {
+    if (initialValue && initialValue.length > 0) {
+      setValue(initialValue);
+    }
+    // Intentionally only react to the first non-empty value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const liveStatus: StatusLineState =
     isStreaming

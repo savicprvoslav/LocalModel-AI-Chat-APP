@@ -9,6 +9,13 @@ import {
   listConversationsByProject,
   createConversation
 } from '@/db/conversations';
+import {
+  ProjectEntity,
+  listEntities,
+  createEntity,
+  updateEntity,
+  deleteEntity
+} from '@/db/projectEntities';
 
 type Props = { projectId: string };
 
@@ -18,7 +25,13 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [entities, setEntities] = useState<ProjectEntity[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entityTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const reloadEntities = async () => {
+    setEntities(await listEntities(projectId));
+  };
 
   useEffect(() => {
     void (async () => {
@@ -29,6 +42,7 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
         setNotes(p.notes);
       }
       setConversations(await listConversationsByProject(projectId));
+      await reloadEntities();
     })();
   }, [projectId]);
 
@@ -72,6 +86,44 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
         }
       ]
     );
+  };
+
+  const queueEntitySave = (
+    id: string,
+    next: { name?: string; description?: string }
+  ) => {
+    const existing = entityTimers.current.get(id);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      void updateEntity(id, next);
+    }, 500);
+    entityTimers.current.set(id, timer);
+  };
+
+  const onEntityChange = (id: string, field: 'name' | 'description', v: string) => {
+    setEntities((arr) =>
+      arr.map((e) => (e.id === id ? { ...e, [field]: v } : e))
+    );
+    queueEntitySave(id, { [field]: v });
+  };
+
+  const onAddEntity = async () => {
+    await createEntity({ project_id: projectId, name: '', description: '' });
+    await reloadEntities();
+  };
+
+  const onDeleteEntity = (id: string) => {
+    Alert.alert('Delete entity?', '', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteEntity(id);
+          await reloadEntities();
+        }
+      }
+    ]);
   };
 
   if (!project) return null;
@@ -133,6 +185,100 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
             borderRadius: t.radii.sm
           }}
         />
+
+        <View style={{ marginTop: t.spacing.xl }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: t.spacing.xs
+            }}
+          >
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>ENTITIES</Text>
+            <Pressable onPress={onAddEntity}>
+              <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ ADD</Text>
+            </Pressable>
+          </View>
+          <Text
+            style={{
+              ...t.type.meta,
+              color: t.colors.text.quiet,
+              marginBottom: t.spacing.sm
+            }}
+          >
+            People, places, or things the assistant should know. Each entity becomes a "name:
+            description" line in the system prompt.
+          </Text>
+          {entities.length === 0 ? (
+            <Pressable
+              onPress={onAddEntity}
+              style={{
+                paddingVertical: t.spacing.md,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderStyle: 'dashed',
+                borderColor: t.colors.border.subtle,
+                borderRadius: t.radii.sm
+              }}
+            >
+              <Text style={{ ...t.type.meta, color: t.colors.text.quiet }}>
+                no entities yet — tap to add one
+              </Text>
+            </Pressable>
+          ) : null}
+          {entities.map((e) => (
+            <View
+              key={e.id}
+              style={{
+                flexDirection: 'row',
+                gap: t.spacing.sm,
+                marginBottom: t.spacing.xs,
+                alignItems: 'flex-start'
+              }}
+            >
+              <TextInput
+                value={e.name}
+                onChangeText={(v) => onEntityChange(e.id, 'name', v)}
+                placeholder="Name"
+                placeholderTextColor={t.colors.text.quiet}
+                style={{
+                  ...t.type.bodyUser,
+                  color: t.colors.text.primary,
+                  borderWidth: 1,
+                  borderColor: t.colors.border.subtle,
+                  borderRadius: t.radii.sm,
+                  padding: t.spacing.sm,
+                  width: 110
+                }}
+              />
+              <TextInput
+                value={e.description}
+                onChangeText={(v) => onEntityChange(e.id, 'description', v)}
+                placeholder="Description"
+                placeholderTextColor={t.colors.text.quiet}
+                multiline
+                style={{
+                  ...t.type.bodyUser,
+                  color: t.colors.text.primary,
+                  borderWidth: 1,
+                  borderColor: t.colors.border.subtle,
+                  borderRadius: t.radii.sm,
+                  padding: t.spacing.sm,
+                  flex: 1,
+                  minHeight: 36
+                }}
+              />
+              <Pressable
+                onPress={() => onDeleteEntity(e.id)}
+                hitSlop={8}
+                style={{ paddingTop: t.spacing.sm }}
+              >
+                <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
 
         <View style={{ marginTop: t.spacing.xl }}>
           <Text

@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Project, listProjects } from '@/db/projects';
 import { Conversation, listConversations, createConversation } from '@/db/conversations';
 import { listMessages } from '@/db/messages';
+import { Skill, listSkills } from '@/db/skills';
 
 type Row =
   | { type: 'project-header'; project: Project }
@@ -23,8 +24,10 @@ const formatRelative = (ts: number): string => {
 export const ConversationListScreen = () => {
   const t = useTheme();
   const [rows, setRows] = useState<Row[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
 
   const reload = useCallback(async () => {
+    setSkills(await listSkills());
     const [projects, conversations] = await Promise.all([listProjects(), listConversations()]);
     const byProject = new Map<string | null, Conversation[]>();
     for (const c of conversations) {
@@ -73,6 +76,19 @@ export const ConversationListScreen = () => {
     router.push(`/conversation/${c.id}`);
   };
 
+  const startFromSkill = async (skill: Skill) => {
+    const c = await createConversation({
+      title: skill.name,
+      system_prompt: skill.system_prompt,
+      persona_id: skill.default_persona_id,
+      skill_id: skill.id
+    });
+    router.push({
+      pathname: `/conversation/${c.id}`,
+      params: skill.starter_text ? { starter: skill.starter_text } : {}
+    });
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
       <ScreenHeader
@@ -88,6 +104,53 @@ export const ConversationListScreen = () => {
           </View>
         }
       />
+      {skills.length > 0 ? (
+        <View>
+          <Text
+            style={{
+              ...t.type.label,
+              color: t.colors.text.tertiary,
+              paddingHorizontal: t.spacing.lg,
+              paddingTop: t.spacing.md,
+              paddingBottom: t.spacing.xs
+            }}
+          >
+            START WITH A SKILL
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: t.spacing.lg,
+              paddingBottom: t.spacing.md,
+              gap: t.spacing.sm
+            }}
+          >
+            {skills.map((s) => (
+              <Pressable
+                key={s.id}
+                onPress={() => startFromSkill(s)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: t.spacing.xs,
+                  paddingHorizontal: t.spacing.md,
+                  paddingVertical: t.spacing.sm,
+                  borderWidth: 1,
+                  borderColor: t.colors.border.default,
+                  borderRadius: t.radii.sm,
+                  backgroundColor: t.colors.bg.subtle
+                }}
+              >
+                {s.emoji ? <Text style={{ fontSize: 14 }}>{s.emoji}</Text> : null}
+                <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>
+                  {s.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
       {rows.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
