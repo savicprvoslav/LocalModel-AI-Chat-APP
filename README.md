@@ -31,7 +31,7 @@ Step-by-step in [`MORNING.md`](./MORNING.md).
 ## Quick start
 
 ```bash
-npm install --legacy-peer-deps          # already done; rerun if you wipe node_modules
+npm install                              # .npmrc sets legacy-peer-deps=true automatically
 npm test                                 # 36 tests pass
 npm run typecheck                        # 0 errors
 npm start                                # open Metro bundler
