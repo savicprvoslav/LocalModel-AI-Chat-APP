@@ -1,8 +1,17 @@
 import type { Message } from '@/db/messages';
 
+export type ProjectEntityRef = { name: string; description: string };
+
 export type BuildPromptArgs = {
-  defaultSystemPrompt: string;
+  /**
+   * The active persona's system prompt. Defines who the assistant is.
+   * Falls back to '' if no persona is set.
+   */
+  personaSystemPrompt: string;
   projectNotes: string;
+  /** Structured list of `name → description` entries scoped to the project. */
+  projectEntities: ProjectEntityRef[];
+  /** Conversation-specific system prompt (set by skill or by user override). */
   conversationSystemPrompt: string;
   history: Message[];
   newUserTurn: string;
@@ -20,10 +29,29 @@ export type BuildPromptResult = {
 const SAFETY = 256;
 const approxTokens = (s: string): number => Math.ceil(s.length / 4);
 
+const composeProjectBlock = (
+  notes: string,
+  entities: ProjectEntityRef[]
+): string => {
+  const parts: string[] = [];
+  if (notes.trim()) parts.push(notes.trim());
+  if (entities.length > 0) {
+    const lines = entities
+      .filter((e) => e.name.trim())
+      .map((e) =>
+        e.description.trim() ? `- ${e.name}: ${e.description.trim()}` : `- ${e.name}`
+      );
+    if (lines.length > 0) parts.push(`Known entities in this project:\n${lines.join('\n')}`);
+  }
+  if (parts.length === 0) return '';
+  return `PROJECT CONTEXT:\n${parts.join('\n\n')}`;
+};
+
 const composeSystem = (a: BuildPromptArgs): string => {
   const parts: string[] = [];
-  if (a.defaultSystemPrompt.trim()) parts.push(a.defaultSystemPrompt.trim());
-  if (a.projectNotes.trim()) parts.push(`PROJECT CONTEXT:\n${a.projectNotes.trim()}`);
+  if (a.personaSystemPrompt.trim()) parts.push(a.personaSystemPrompt.trim());
+  const projectBlock = composeProjectBlock(a.projectNotes, a.projectEntities);
+  if (projectBlock) parts.push(projectBlock);
   if (a.conversationSystemPrompt.trim()) parts.push(a.conversationSystemPrompt.trim());
   return parts.join('\n\n');
 };

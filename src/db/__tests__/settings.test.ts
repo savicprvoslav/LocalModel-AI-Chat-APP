@@ -17,11 +17,6 @@ describe('settings repo', () => {
     expect(await getSetting('temperature')).toBe(0.4);
   });
 
-  it('round-trips a string', async () => {
-    await setSetting('default_system_prompt', 'be concise');
-    expect(await getSetting('default_system_prompt')).toBe('be concise');
-  });
-
   it('round-trips null', async () => {
     await setSetting('active_model_id', null);
     expect(await getSetting('active_model_id')).toBeNull();

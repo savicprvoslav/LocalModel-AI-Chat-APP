@@ -13,8 +13,9 @@ const mkMsg = (role: 'user' | 'assistant', content: string, t = 1): Message => (
 });
 
 const baseArgs: BuildPromptArgs = {
-  defaultSystemPrompt: '',
+  personaSystemPrompt: '',
   projectNotes: '',
+  projectEntities: [],
   conversationSystemPrompt: '',
   history: [],
   newUserTurn: 'hello',
@@ -29,20 +30,43 @@ describe('buildPrompt', () => {
     expect(r.dropped).toBe(0);
   });
 
-  it('combines all three system layers in order', () => {
+  it('combines persona + project + conversation system layers', () => {
     const r = buildPrompt({
       ...baseArgs,
-      defaultSystemPrompt: 'be concise',
-      projectNotes: 'Tom is the backend lead',
+      personaSystemPrompt: 'You are a concise assistant',
+      projectNotes: 'Acme migrating to Postgres',
+      projectEntities: [
+        { name: 'Tom', description: 'backend lead' },
+        { name: 'Q4 freeze', description: 'no risky merges after Dec 5' }
+      ],
       conversationSystemPrompt: 'this is a 1:1 prep'
     });
-    expect(r.text).toContain('be concise');
-    expect(r.text).toContain('Tom is the backend lead');
+    expect(r.text).toContain('You are a concise assistant');
+    expect(r.text).toContain('PROJECT CONTEXT:');
+    expect(r.text).toContain('Acme migrating to Postgres');
+    expect(r.text).toContain('Tom: backend lead');
+    expect(r.text).toContain('Q4 freeze: no risky merges after Dec 5');
     expect(r.text).toContain('this is a 1:1 prep');
-    expect(r.text.indexOf('be concise')).toBeLessThan(r.text.indexOf('Tom is the backend lead'));
-    expect(r.text.indexOf('Tom is the backend lead')).toBeLessThan(
-      r.text.indexOf('this is a 1:1 prep')
-    );
+    // ordering
+    expect(r.text.indexOf('You are a concise')).toBeLessThan(r.text.indexOf('PROJECT CONTEXT'));
+    expect(r.text.indexOf('PROJECT CONTEXT')).toBeLessThan(r.text.indexOf('this is a 1:1 prep'));
+  });
+
+  it('renders only entities (no notes) when notes are empty', () => {
+    const r = buildPrompt({
+      ...baseArgs,
+      projectEntities: [{ name: 'Sam', description: 'PM' }]
+    });
+    expect(r.text).toContain('PROJECT CONTEXT:');
+    expect(r.text).toContain('- Sam: PM');
+  });
+
+  it('omits PROJECT CONTEXT block when notes and entities both empty', () => {
+    const r = buildPrompt({
+      ...baseArgs,
+      personaSystemPrompt: 'You are X'
+    });
+    expect(r.text).not.toContain('PROJECT CONTEXT');
   });
 
   it('drops oldest pairs to fit budget', () => {
@@ -71,28 +95,23 @@ describe('buildPrompt', () => {
       mkMsg('user', 'recent user', 3),
       mkMsg('assistant', 'recent asst', 4)
     ];
-    const r = buildPrompt({
-      ...baseArgs,
-      history,
-      contextWindow: 4096,
-      reservedForResponse: 1024
-    });
+    const r = buildPrompt({ ...baseArgs, history });
     expect(r.text).toContain('recent user');
     expect(r.text).toContain('recent asst');
   });
 
-  it('throws when even system + new turn exceeds budget', () => {
+  it('throws when persona + new turn exceeds budget', () => {
     expect(() =>
       buildPrompt({
         ...baseArgs,
-        defaultSystemPrompt: 'x'.repeat(50000),
+        personaSystemPrompt: 'x'.repeat(50000),
         contextWindow: 1024,
         reservedForResponse: 256
       })
     ).toThrow(/too long/i);
   });
 
-  it('renders history oldest→newest in output', () => {
+  it('renders history oldest→newest', () => {
     const history = [mkMsg('user', 'first-user', 1), mkMsg('assistant', 'first-asst', 2)];
     const r = buildPrompt({ ...baseArgs, history });
     expect(r.text.indexOf('first-user')).toBeLessThan(r.text.indexOf('first-asst'));

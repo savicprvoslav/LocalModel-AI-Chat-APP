@@ -3,7 +3,6 @@ import { getDb } from './db';
 export type Theme = 'system' | 'light' | 'dark';
 
 export type Settings = {
-  default_system_prompt: string;
   active_model_id: string | null;
   temperature: number;
   max_tokens: number;
@@ -12,7 +11,6 @@ export type Settings = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  default_system_prompt: '',
   active_model_id: null,
   temperature: 0.7,
   max_tokens: 1024,

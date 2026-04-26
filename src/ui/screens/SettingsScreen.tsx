@@ -166,30 +166,32 @@ export const SettingsScreen = () => {
             marginBottom: t.spacing.sm
           }}
         >
-          DEFAULTS
+          BEHAVIOR
         </Text>
-        <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
-          default system prompt
-        </Text>
-        <TextInput
-          value={settings.default_system_prompt}
-          onChangeText={(v) => {
-            setSettings({ ...settings, default_system_prompt: v });
-            void setSetting('default_system_prompt', v);
-          }}
-          multiline
+        <Pressable
+          onPress={() => router.push('/personas')}
           style={{
-            ...t.type.bodyAi,
-            color: t.colors.text.primary,
-            fontSize: 14,
-            minHeight: 80,
-            padding: t.spacing.sm,
-            borderWidth: 1,
-            borderColor: t.colors.border.subtle,
-            borderRadius: t.radii.sm,
-            marginTop: t.spacing.xs
+            paddingVertical: t.spacing.sm,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}
-        />
+        >
+          <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>Personas</Text>
+          <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/skills')}
+          style={{
+            paddingVertical: t.spacing.sm,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>Skills</Text>
+          <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
+        </Pressable>
 
         <Text
           style={{

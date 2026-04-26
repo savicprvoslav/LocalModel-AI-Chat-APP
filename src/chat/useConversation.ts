@@ -13,12 +13,15 @@ import { getEngine } from '@/engine';
 import { buildPrompt } from './promptBuilder';
 import { getCatalogEntry } from '@/model/catalog';
 import { modelPath } from '@/model/storage';
+import { Persona, getPersona, getDefaultPersona } from '@/db/personas';
+import { listEntities } from '@/db/projectEntities';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
 
 export type UseConversationState = {
   conversation: Conversation | null;
   project: Project | null;
+  persona: Persona | null;
   messages: Message[];
   status: ConversationStatus;
   error: string | null;
@@ -30,6 +33,7 @@ export const useConversation = (conversationId: string) => {
   const [state, setState] = useState<UseConversationState>({
     conversation: null,
     project: null,
+    persona: null,
     messages: [],
     status: 'idle',
     error: null,
@@ -43,9 +47,12 @@ export const useConversation = (conversationId: string) => {
     const conv = await getConversation(conversationId);
     if (!conv) return;
     const project = conv.project_id ? await getProject(conv.project_id) : null;
+    const persona = conv.persona_id
+      ? await getPersona(conv.persona_id)
+      : await getDefaultPersona();
     const messages = await listMessages(conversationId);
     if (!settingsRef.current) settingsRef.current = await getAllSettings();
-    setState((s) => ({ ...s, conversation: conv, project, messages }));
+    setState((s) => ({ ...s, conversation: conv, project, persona, messages }));
   }, [conversationId]);
 
   useEffect(() => {
@@ -64,6 +71,10 @@ export const useConversation = (conversationId: string) => {
         return;
       }
       const project = conv.project_id ? await getProject(conv.project_id) : null;
+      const persona = conv.persona_id
+        ? await getPersona(conv.persona_id)
+        : await getDefaultPersona();
+      const entities = project ? await listEntities(project.id) : [];
       const history = await listMessages(conversationId);
 
       const userMsg = await appendMessage({
@@ -86,11 +97,18 @@ export const useConversation = (conversationId: string) => {
         error: null
       }));
 
+      // Persona temperature override falls back to settings default if persona has none.
+      const effectiveTemp = persona?.temperature ?? settings.temperature;
+
       let prompt: string;
       try {
         const built = buildPrompt({
-          defaultSystemPrompt: settings.default_system_prompt,
+          personaSystemPrompt: persona?.system_prompt ?? '',
           projectNotes: project?.notes ?? '',
+          projectEntities: entities.map((e) => ({
+            name: e.name,
+            description: e.description
+          })),
           conversationSystemPrompt: conv.system_prompt,
           history,
           newUserTurn: text,
@@ -151,7 +169,7 @@ export const useConversation = (conversationId: string) => {
       await engine.streamCompletion(
         prompt,
         {
-          temperature: settings.temperature,
+          temperature: effectiveTemp,
           maxTokens: settings.max_tokens,
           signal: abortRef.current.signal
         },
