@@ -33,9 +33,36 @@ const runMigrations = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     const steps = MIGRATIONS[v];
     if (!steps) continue;
     for (const sql of steps) {
-      await db.execAsync(sql);
+      try {
+        await db.execAsync(sql);
+      } catch (e) {
+        // ALTER TABLE ADD COLUMN can fail if the column already exists.
+        // Other errors should propagate.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/duplicate column name/i.test(msg)) throw e;
+      }
     }
     await setStoredVersion(db, v);
+  }
+};
+
+/**
+ * Belt-and-suspenders: every launch, verify the conversations table has the
+ * v2 columns. If a previous migration partially failed (or the version row
+ * lied), this self-heals without losing data.
+ */
+const ensureV2ConversationColumns = async (
+  db: SQLite.SQLiteDatabase
+): Promise<void> => {
+  const cols = await db.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(conversations)'
+  );
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has('persona_id')) {
+    await db.execAsync('ALTER TABLE conversations ADD COLUMN persona_id TEXT');
+  }
+  if (!names.has('skill_id')) {
+    await db.execAsync('ALTER TABLE conversations ADD COLUMN skill_id TEXT');
   }
 };
 
@@ -48,6 +75,9 @@ export const initDb = async (name = 'chat.db'): Promise<SQLite.SQLiteDatabase> =
   await _db.execAsync(SCHEMA_SQL);
   // Ensure schema_meta exists then bring up to current version via migrations.
   await runMigrations(_db);
+  // Self-heal: even if migrations don't run (stored version already at target,
+  // or partial run on a prior launch), make sure required columns exist.
+  await ensureV2ConversationColumns(_db);
   await setStoredVersion(_db, SCHEMA_VERSION);
   // Seed built-ins (idempotent) and migrate legacy default_system_prompt setting.
   await seedBuiltins();
