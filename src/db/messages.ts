@@ -73,3 +73,12 @@ export const finishMessage = async (
 export const deleteMessage = async (id: string): Promise<void> => {
   await getDb().runAsync('DELETE FROM messages WHERE id = ?', id);
 };
+
+export const clearMessagesForConversation = async (
+  conversationId: string
+): Promise<void> => {
+  await getDb().runAsync(
+    'DELETE FROM messages WHERE conversation_id = ?',
+    conversationId
+  );
+};

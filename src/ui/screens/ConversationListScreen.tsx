@@ -176,7 +176,10 @@ export const ConversationListScreen = () => {
       <ScreenHeader
         title="local chat"
         right={
-          <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
+          <View style={{ flexDirection: 'row', gap: t.spacing.md, alignItems: 'center' }}>
+            <Pressable onPress={() => router.push('/search')} hitSlop={8}>
+              <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⌕</Text>
+            </Pressable>
             <Pressable onPress={newConversation}>
               <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW</Text>
             </Pressable>

@@ -6,16 +6,24 @@ Distinctive identity: warm-dark canvas, mono UI chrome, serif AI prose, status-l
 
 ## What works right now
 
-The full JavaScript layer is implemented and tested:
+The full JavaScript/TypeScript layer is implemented and tested:
 
-- 5 screens (FirstRun, ConversationList, Conversation, ProjectDetail, Settings) wired via Expo Router
+- 7 screens (FirstRun, ConversationList, Conversation, ProjectDetail, Settings, Personas/PersonaEdit, Skills/SkillEdit, Search) wired via Expo Router
 - Engine abstraction with a `fakeEngine` (scripted streams) and a production `llamaRnEngine`
-- SQLite persistence: projects, conversations, messages, settings
+- SQLite persistence: projects, conversations, messages, settings, personas, skills, project_entities — schema v3 with migrations
 - Multi-model catalog (Compact 1B, Standard 3B, Capable 7B), simultaneous installs, switch-active flow
 - Streaming chat with stop, error, cancelled finish reasons
-- Project notes prepended to system prompt for cross-conversation memory
-- Theme system (dark hero + light adapt), typography, all visual components
-- 36 tests passing across engine, db, model, and chat layers
+- **Personas** — six built-in (Default, Concise, Coach, Engineer, Editor, Tutor) with full CRUD; per-conversation override via header pill
+- **Skills** — twelve built-in task starters with full CRUD; horizontal chip strip on home screen
+- **Project memory** — freeform notes + structured entities (`name → description`)
+- **Conversation polish**: auto-title from first message, long-press menu (rename, move-to-project, delete), overflow menu (rename, edit system prompt, export to Markdown, clear history, delete), action sheet
+- **Local FTS5 search** across all messages, with snippets and project/conversation breadcrumbs
+- **Settings sliders** for temperature, max-tokens, context-window
+- **Device RAM detection** in FirstRun via `react-native-device-info`
+- **Error boundary** at the root — no more red boxes
+- Theme system (warm-dark hero + warm-light adapt), typography, all visual components
+- Markdown rendering with code blocks, blinking streaming cursor, status-line states (warming/streaming/error/ctxFull)
+- **59 tests passing** across engine, db, model, chat, and search layers
 
 ## What still needs you
 
@@ -25,6 +33,7 @@ The native side requires your account credentials, which I can't authenticate fo
 - [ ] First `eas build --profile development` for iOS or Android (~25 min on Expo's cloud)
 - [ ] Apple Developer / Google Play Console interaction if you want TestFlight / Play distribution
 - [ ] First on-device verification of llama.rn with a real model
+- [ ] Real SHA-256 hashes in `src/model/catalog.ts` (currently placeholders, downloads run with `skipShaCheck: true`)
 
 Step-by-step in [`MORNING.md`](./MORNING.md).
 
@@ -32,7 +41,7 @@ Step-by-step in [`MORNING.md`](./MORNING.md).
 
 ```bash
 npm install                              # .npmrc sets legacy-peer-deps=true automatically
-npm test                                 # 36 tests pass
+npm test                                 # 59 tests pass
 npm run typecheck                        # 0 errors
 npm start                                # open Metro bundler
 
@@ -54,8 +63,8 @@ npx expo start --dev-client
 ## Try it without a real model
 
 The `fakeEngine` simulates streaming, so the UI is fully usable in Expo Go (no native build).
-To switch to the fake engine, edit [src/engine/index.ts](src/engine/index.ts) and uncomment the
-last block, or run with this snippet in `app/_layout.tsx` (already left as a comment):
+To switch to the fake engine, edit [src/engine/index.ts](src/engine/index.ts) and call
+`useFakeEngineFor(...)` at module load:
 
 ```ts
 import { useFakeEngineFor } from '@/engine';
@@ -73,28 +82,39 @@ scripted reply.
 See [docs/superpowers/specs/2026-04-25-local-llm-chat-app-design.md](docs/superpowers/specs/2026-04-25-local-llm-chat-app-design.md).
 
 ```
-app/                      Expo Router screens (file-based routing)
+app/                      Expo Router routes (file-based)
   index.tsx               first-run gate → ConversationList
   first-run.tsx           model picker
   conversation/[id].tsx
   project/[id].tsx
   settings.tsx
-  _layout.tsx             root layout with providers
+  personas.tsx, persona/[id].tsx
+  skills.tsx, skill/[id].tsx
+  search.tsx
+  _layout.tsx             root layout with providers + ErrorBoundary
 
 src/
   engine/                 ChatEngine interface + fakeEngine + llamaRnEngine
-  db/                     SQLite repos (projects, conversations, messages, settings)
+  db/
+    schema.ts             v3 schema + incremental migrations
+    db.ts                 connection, init, in-memory test DB
+    seeds.ts              built-in personas + skills
+    projects.ts, conversations.ts, messages.ts, settings.ts
+    personas.ts, skills.ts, projectEntities.ts
+    search.ts             FTS5 query
   model/                  Catalog (3 models), storage, download with resume + SHA
   chat/                   promptBuilder, useConversation hook
   ui/
     theme/                tokens, typography, ThemeProvider
-    components/           StatusLine, Composer, MessageBubble, ModelCard, …
-    screens/              the five screens
-  providers.tsx           composes ThemeProvider + DB init
+    components/           StatusLine, Composer, MessageBubble, ModelCard,
+                          StepSlider, ErrorBoundary, …
+    screens/              the eight screens
+  device.ts               device RAM detection
   haptics.ts              expo-haptics wrapper
+  providers.tsx           composes ErrorBoundary + SafeAreaProvider + ThemeProvider + DB init
 
 __mocks__/                jest mocks for expo-sqlite, expo-crypto, expo-file-system
-docs/superpowers/         design spec + this plan
+docs/superpowers/         design spec + plan
 ```
 
 ### Boundary rules
@@ -113,13 +133,21 @@ docs/superpowers/         design spec + this plan
 
 All three may be installed simultaneously; one is active at a time. SHA-256 hashes in [src/model/catalog.ts](src/model/catalog.ts) are placeholders — see `MORNING.md` for how to fill them in.
 
+## Built-in personas (6)
+
+`Default`, `Concise`, `Coach`, `Engineer`, `Editor`, `Tutor`. Each has its own system prompt, description, and default temperature. Editable via Settings → Personas. The active default is used for any conversation that doesn't explicitly override it. Per-conversation, tap the persona pill in the header to switch.
+
+## Built-in skills (12)
+
+`Summarize`, `Explain like I'm 5`, `Code review`, `Commit message`, `Translate`, `Brainstorm`, `Outline`, `Critique`, `Counter-argument`, `Rewrite`, `Email draft`, `Decision matrix`. Each preconfigures a conversation with a system prompt, default persona, temperature, starter text, and placeholder. Tap a chip on the home screen to start. Editable / duplicable via Settings → Skills.
+
 ## Tests
 
 ```bash
-npm test                                 # all
-npx jest src/engine                      # engine only
-npx jest src/db                          # db repos
-npx jest src/model                       # model catalog + storage + download
+npm test                                 # all 59
+npx jest src/engine                      # engine
+npx jest src/db                          # db repos + search
+npx jest src/model                       # model layer
 npx jest src/chat                        # promptBuilder
 ```
 

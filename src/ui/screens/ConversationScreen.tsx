@@ -21,7 +21,8 @@ import { useConversation } from '@/chat/useConversation';
 import { getSetting } from '@/db/settings';
 import { Skill, getSkill } from '@/db/skills';
 import { Persona, listPersonas } from '@/db/personas';
-import { updateConversation } from '@/db/conversations';
+import { updateConversation, deleteConversation } from '@/db/conversations';
+import { clearMessagesForConversation } from '@/db/messages';
 
 type Props = {
   conversationId: string;
@@ -40,7 +41,8 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     tokenCount,
     tokRate,
     send,
-    stop
+    stop,
+    reload
   } = useConversation(conversationId);
   const listRef = useRef<FlatList>(null);
   const [activeModel, setActiveModel] = useState<string>('');
@@ -76,21 +78,121 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     }
   };
 
-  const onOverflowPress = () => {
+  const promptRename = () => {
+    if (!conversation) return;
     if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Rename conversation',
+        undefined,
+        async (text) => {
+          const trimmed = (text ?? '').trim();
+          if (!trimmed) return;
+          await updateConversation(conversation.id, { title: trimmed });
+          await reload();
+        },
+        'plain-text',
+        conversation.title
+      );
+    } else {
+      // Android: edit by tapping title in header (future: themed modal).
+      Alert.alert(
+        'Rename',
+        'On Android, tap the conversation title in the header to rename.'
+      );
+    }
+  };
+
+  const promptEditSystemPrompt = () => {
+    if (!conversation) return;
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'System prompt for this conversation',
+        'Layered on top of the active persona. Empty to clear.',
+        async (text) => {
+          await updateConversation(conversation.id, {
+            system_prompt: (text ?? '').trim()
+          });
+          await reload();
+        },
+        'plain-text',
+        conversation.system_prompt
+      );
+    } else {
+      Alert.alert(
+        'Edit system prompt',
+        'Available on iOS only in this build. Future: themed modal for Android.'
+      );
+    }
+  };
+
+  const confirmClearHistory = () => {
+    if (!conversation) return;
+    Alert.alert(
+      'Clear history?',
+      'Removes all messages in this conversation. The conversation itself stays.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await clearMessagesForConversation(conversation.id);
+            await reload();
+          }
+        }
+      ]
+    );
+  };
+
+  const confirmDeleteConversation = () => {
+    if (!conversation) return;
+    Alert.alert('Delete conversation?', `"${conversation.title}" will be removed.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteConversation(conversation.id);
+          router.replace('/');
+        }
+      }
+    ]);
+  };
+
+  const onOverflowPress = () => {
+    if (!conversation) return;
+    const actions = [
+      { label: 'Rename', run: promptRename },
+      { label: 'Edit system prompt', run: promptEditSystemPrompt },
+      { label: 'Export as Markdown', run: () => void exportMarkdown() },
+      { label: 'Clear history', run: confirmClearHistory, destructive: true },
+      { label: 'Delete conversation', run: confirmDeleteConversation, destructive: true }
+    ];
+
+    if (Platform.OS === 'ios') {
+      const labels = actions.map((a) => a.label);
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['Export as Markdown', 'Cancel'],
-          cancelButtonIndex: 1
+          title: conversation.title,
+          options: [...labels, 'Cancel'],
+          cancelButtonIndex: labels.length,
+          destructiveButtonIndex: actions
+            .map((a, i) => (a.destructive ? i : -1))
+            .filter((i) => i >= 0)
         },
         (idx) => {
-          if (idx === 0) void exportMarkdown();
+          const picked = actions[idx];
+          if (picked) picked.run();
         }
       );
     } else {
-      Alert.alert(conversation?.title ?? 'Conversation', undefined, [
-        { text: 'Export as Markdown', onPress: () => void exportMarkdown() },
-        { text: 'Cancel', style: 'cancel' }
+      Alert.alert(conversation.title, undefined, [
+        ...actions.map((a) => ({
+          text: a.label,
+          onPress: a.run,
+          ...(a.destructive ? { style: 'destructive' as const } : {})
+        })),
+        { text: 'Cancel', style: 'cancel' as const }
       ]);
     }
   };
@@ -249,7 +351,10 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         ref={listRef}
         data={messages}
         keyExtractor={(m) => m.id}
-        contentContainerStyle={{ padding: t.spacing.lg }}
+        contentContainerStyle={{
+          padding: t.spacing.lg,
+          flexGrow: 1
+        }}
         renderItem={({ item, index }) => (
           <MessageBubble
             message={item}
@@ -258,6 +363,64 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
             }
           />
         )}
+        ListEmptyComponent={
+          <View
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              paddingVertical: t.spacing.xxl,
+              gap: t.spacing.lg
+            }}
+          >
+            {skill ? (
+              <View style={{ gap: t.spacing.xs }}>
+                <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>
+                  {skill.emoji} {skill.name.toUpperCase()}
+                </Text>
+                {skill.description ? (
+                  <Text
+                    style={{
+                      ...t.type.bodyAi,
+                      color: t.colors.text.secondary,
+                      fontSize: 15
+                    }}
+                  >
+                    {skill.description}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {persona ? (
+              <View style={{ gap: t.spacing.xs }}>
+                <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+                  ◎ {persona.name.toUpperCase()}
+                </Text>
+                {persona.description ? (
+                  <Text
+                    style={{
+                      ...t.type.bodyAi,
+                      color: t.colors.text.secondary,
+                      fontSize: 15
+                    }}
+                  >
+                    {persona.description}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            <Text
+              style={{
+                ...t.type.meta,
+                color: t.colors.text.quiet,
+                marginTop: t.spacing.md
+              }}
+            >
+              {skill?.starter_text
+                ? '~/ready · starter text in the composer below'
+                : '~/ready · type a message to start'}
+            </Text>
+          </View>
+        }
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
       />
       <Composer
