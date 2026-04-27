@@ -6,7 +6,12 @@ import {
   listMessages,
   updateMessageStream
 } from '@/db/messages';
-import { Conversation, getConversation, touchConversation } from '@/db/conversations';
+import {
+  Conversation,
+  getConversation,
+  touchConversation,
+  updateConversation
+} from '@/db/conversations';
 import { Project, getProject } from '@/db/projects';
 import { getAllSettings, Settings } from '@/db/settings';
 import { getEngine } from '@/engine';
@@ -76,6 +81,27 @@ export const useConversation = (conversationId: string) => {
         : await getDefaultPersona();
       const entities = project ? await listEntities(project.id) : [];
       const history = await listMessages(conversationId);
+
+      // Auto-title from first user message if conversation is still using
+      // the default placeholder. Truncate at sentence/word boundary, max 60 chars.
+      const isFirstTurn = history.length === 0;
+      const isPlaceholderTitle =
+        conv.title === 'New conversation' || !conv.title.trim();
+      if (isFirstTurn && isPlaceholderTitle) {
+        const compact = text.replace(/\s+/g, ' ').trim();
+        let title = compact.slice(0, 60);
+        if (compact.length > 60) {
+          const cutAt = title.lastIndexOf(' ');
+          if (cutAt > 30) title = title.slice(0, cutAt);
+          title = `${title}…`;
+        }
+        await updateConversation(conv.id, { title });
+        conv.title = title;
+        setState((s) => ({
+          ...s,
+          conversation: s.conversation ? { ...s.conversation, title } : s.conversation
+        }));
+      }
 
       const userMsg = await appendMessage({
         conversation_id: conv.id,

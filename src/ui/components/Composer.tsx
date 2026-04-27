@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
@@ -28,13 +28,20 @@ export const Composer = ({
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState(initialValue ?? '');
+  const inputRef = useRef<TextInput>(null);
 
-  // Seed once when initialValue first becomes available.
+  // Seed and focus once when started from a skill (initialValue provided).
   useEffect(() => {
     if (initialValue && initialValue.length > 0) {
       setValue(initialValue);
     }
-    // Intentionally only react to the first non-empty value.
+    // Auto-focus on mount so keyboard pops up immediately when the user
+    // arrives from a skill chip or freshly created conversation.
+    const id = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 250);
+    return () => clearTimeout(id);
+    // Intentionally mount-only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,6 +95,7 @@ export const Composer = ({
           $
         </Text>
         <TextInput
+          ref={inputRef}
           value={isStreaming ? '' : value}
           onChangeText={setValue}
           placeholder={isStreaming ? '…' : placeholder}

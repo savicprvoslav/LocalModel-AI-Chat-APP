@@ -14,6 +14,7 @@ import {
 import { downloadModel } from '@/model/download';
 import { getAllSettings, setSetting, Settings } from '@/db/settings';
 import { getEngine } from '@/engine';
+import { StepSlider } from '../components/StepSlider';
 
 const fmtGB = (b: number) => `${(b / 1_000_000_000).toFixed(2)} GB`;
 
@@ -192,6 +193,55 @@ export const SettingsScreen = () => {
           <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>Skills</Text>
           <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
         </Pressable>
+
+        <Text
+          style={{
+            ...t.type.label,
+            color: t.colors.text.tertiary,
+            marginTop: t.spacing.xl,
+            marginBottom: t.spacing.md
+          }}
+        >
+          GENERATION
+        </Text>
+        <StepSlider
+          label="TEMPERATURE"
+          hint="Sampling randomness. 0 = deterministic, 1 = balanced, 2 = wild. Personas can override per-conversation."
+          value={settings.temperature}
+          min={0}
+          max={2}
+          step={0.1}
+          format={(v) => v.toFixed(1)}
+          onChange={(v) => {
+            const rounded = +v.toFixed(2);
+            setSettings({ ...settings, temperature: rounded });
+            void setSetting('temperature', rounded);
+          }}
+        />
+        <StepSlider
+          label="MAX RESPONSE TOKENS"
+          hint="Reserved for the model's reply. Larger = longer answers but smaller context for history."
+          value={settings.max_tokens}
+          min={128}
+          max={2048}
+          step={128}
+          onChange={(v) => {
+            setSettings({ ...settings, max_tokens: v });
+            void setSetting('max_tokens', v);
+          }}
+        />
+        <StepSlider
+          label="CONTEXT WINDOW"
+          hint="Total tokens the model can see. Bigger uses more memory; below ~2k may truncate history aggressively."
+          value={settings.context_window}
+          min={2048}
+          max={8192}
+          step={1024}
+          onChange={(v) => {
+            setSettings({ ...settings, context_window: v });
+            void setSetting('context_window', v);
+          }}
+        />
 
         <Text
           style={{

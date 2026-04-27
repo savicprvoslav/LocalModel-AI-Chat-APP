@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Share,
+  Text,
+  View
+} from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -10,6 +20,8 @@ import type { StatusLineState } from '../components/StatusLine';
 import { useConversation } from '@/chat/useConversation';
 import { getSetting } from '@/db/settings';
 import { Skill, getSkill } from '@/db/skills';
+import { Persona, listPersonas } from '@/db/personas';
+import { updateConversation } from '@/db/conversations';
 
 type Props = {
   conversationId: string;
@@ -34,6 +46,96 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
   const [activeModel, setActiveModel] = useState<string>('');
   const [ctx, setCtx] = useState<number>(4096);
   const [skill, setSkill] = useState<Skill | null>(null);
+
+  const exportMarkdown = async () => {
+    if (!conversation) return;
+    const lines: string[] = [];
+    lines.push(`# ${conversation.title}`);
+    if (project) lines.push(`Project: ${project.name}`);
+    if (persona) lines.push(`Persona: ${persona.name}`);
+    if (skill) lines.push(`Skill: ${skill.name}`);
+    lines.push('');
+    for (const m of messages) {
+      const ts = new Date(m.created_at).toISOString();
+      if (m.role === 'user') {
+        lines.push(`## You — ${ts}`);
+      } else if (m.role === 'assistant') {
+        lines.push(`## Assistant — ${ts}`);
+      } else {
+        lines.push(`## System — ${ts}`);
+      }
+      lines.push('');
+      lines.push(m.content);
+      lines.push('');
+    }
+    const md = lines.join('\n');
+    try {
+      await Share.share({ message: md, title: conversation.title });
+    } catch {
+      // user cancelled
+    }
+  };
+
+  const onOverflowPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Export as Markdown', 'Cancel'],
+          cancelButtonIndex: 1
+        },
+        (idx) => {
+          if (idx === 0) void exportMarkdown();
+        }
+      );
+    } else {
+      Alert.alert(conversation?.title ?? 'Conversation', undefined, [
+        { text: 'Export as Markdown', onPress: () => void exportMarkdown() },
+        { text: 'Cancel', style: 'cancel' }
+      ]);
+    }
+  };
+
+  const onPersonaPillPress = async () => {
+    const personas = await listPersonas();
+    if (personas.length === 0) return;
+
+    const apply = async (p: Persona) => {
+      await updateConversation(conversationId, { persona_id: p.id });
+      // Reload conversation state via the hook's reload
+      // (useConversation rerolls persona on next focus / send; nudge it now)
+      router.replace(`/conversation/${conversationId}`);
+    };
+
+    if (Platform.OS === 'ios') {
+      const labels = personas.map((p) => p.name);
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Switch persona',
+          options: [...labels, 'Edit current', 'Cancel'],
+          cancelButtonIndex: labels.length + 1
+        },
+        (idx) => {
+          if (idx < labels.length) {
+            const picked = personas[idx];
+            if (picked) void apply(picked);
+          } else if (idx === labels.length && persona) {
+            router.push(`/persona/${persona.id}`);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Switch persona', undefined, [
+        ...personas.map((p) => ({
+          text: p.name,
+          onPress: () => void apply(p)
+        })),
+        ...(persona
+          ? [{ text: 'Edit current', onPress: () => router.push(`/persona/${persona.id}`) }]
+          : []),
+        { text: 'Cancel', style: 'cancel' as const }
+      ]);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -84,9 +186,17 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         }
         title={conversation?.title ?? '…'}
         right={
-          project ? (
-            <ProjectPill name={project.name} onPress={() => router.push(`/project/${project.id}`)} />
-          ) : undefined
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm }}>
+            {project ? (
+              <ProjectPill
+                name={project.name}
+                onPress={() => router.push(`/project/${project.id}`)}
+              />
+            ) : null}
+            <Pressable onPress={onOverflowPress} hitSlop={8}>
+              <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⋯</Text>
+            </Pressable>
+          </View>
         }
       />
       {(persona || skill) ? (
@@ -103,7 +213,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         >
           {persona ? (
             <Pressable
-              onPress={() => router.push(`/persona/${persona.id}`)}
+              onPress={onPersonaPillPress}
               style={{
                 paddingHorizontal: t.spacing.sm,
                 paddingVertical: 3,

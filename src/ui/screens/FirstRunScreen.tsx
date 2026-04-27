@@ -1,21 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme } from '../theme/useTheme';
 import { ModelCard } from '../components/ModelCard';
 import { CATALOG, DEFAULT_MODEL_ID } from '@/model/catalog';
 import { downloadModel } from '@/model/download';
 import { setSetting } from '@/db/settings';
+import { getDeviceRamGB } from '@/device';
 
 type Props = { onComplete: () => void; deviceRamGB?: number };
 
 const fmtGB = (b: number) => `${(b / 1_000_000_000).toFixed(1)} GB`;
 
-export const FirstRunScreen = ({ onComplete, deviceRamGB = 8 }: Props) => {
+export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
   const t = useTheme();
   const [selected, setSelected] = useState<string>(DEFAULT_MODEL_ID);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [detectedRamGB, setDetectedRamGB] = useState<number | null>(
+    typeof deviceRamGB === 'number' ? deviceRamGB : null
+  );
+
+  useEffect(() => {
+    if (typeof deviceRamGB === 'number') return;
+    void (async () => {
+      setDetectedRamGB(await getDeviceRamGB());
+    })();
+  }, [deviceRamGB]);
+
+  const ramGB = detectedRamGB ?? 8;
 
   const entry = CATALOG.find((e) => e.id === selected) ?? CATALOG[1]!;
 
@@ -70,7 +83,7 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB = 8 }: Props) => {
           entry={e}
           selected={selected === e.id}
           recommended={e.id === DEFAULT_MODEL_ID}
-          belowMinRam={deviceRamGB < e.minRamGB}
+          belowMinRam={ramGB < e.minRamGB}
           onPress={() => !downloading && setSelected(e.id)}
         />
       ))}

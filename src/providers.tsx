@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './ui/theme/ThemeProvider';
+import { ErrorBoundary } from './ui/components/ErrorBoundary';
 import { initDb } from './db/db';
 
 type Props = { children: ReactNode };
@@ -21,8 +22,10 @@ export const AppProviders = ({ children }: Props) => {
   }
   if (!ready) return null;
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>{children}</ThemeProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>{children}</ThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 };

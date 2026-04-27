@@ -1,10 +1,24 @@
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Project, listProjects } from '@/db/projects';
-import { Conversation, listConversations, createConversation } from '@/db/conversations';
+import {
+  Conversation,
+  listConversations,
+  createConversation,
+  updateConversation,
+  deleteConversation
+} from '@/db/conversations';
 import { listMessages } from '@/db/messages';
 import { Skill, listSkills } from '@/db/skills';
 
@@ -25,10 +39,12 @@ export const ConversationListScreen = () => {
   const t = useTheme();
   const [rows, setRows] = useState<Row[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
     const [projects, conversations] = await Promise.all([listProjects(), listConversations()]);
+    setProjects(projects);
     const byProject = new Map<string | null, Conversation[]>();
     for (const c of conversations) {
       const k = c.project_id;
@@ -74,6 +90,72 @@ export const ConversationListScreen = () => {
   const newConversation = async () => {
     const c = await createConversation({ title: 'New conversation' });
     router.push(`/conversation/${c.id}`);
+  };
+
+  const promptRename = (c: Conversation) => {
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Rename conversation',
+        undefined,
+        async (text) => {
+          const trimmed = (text ?? '').trim();
+          if (!trimmed) return;
+          await updateConversation(c.id, { title: trimmed });
+          await reload();
+        },
+        'plain-text',
+        c.title
+      );
+    } else {
+      // Android has no Alert.prompt; rename inline by navigating to a dedicated
+      // rename screen would be the proper fix. For v1.5 we just open the
+      // conversation — user can rename via the header tap.
+      router.push(`/conversation/${c.id}`);
+    }
+  };
+
+  const confirmDelete = (c: Conversation) => {
+    Alert.alert('Delete conversation?', `"${c.title}" will be removed.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteConversation(c.id);
+          await reload();
+        }
+      }
+    ]);
+  };
+
+  const promptMoveToProject = (c: Conversation) => {
+    const options: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }> = [
+      {
+        text: 'Inbox (no project)',
+        onPress: async () => {
+          await updateConversation(c.id, { project_id: null });
+          await reload();
+        }
+      },
+      ...projects.map((p) => ({
+        text: p.name,
+        onPress: async () => {
+          await updateConversation(c.id, { project_id: p.id });
+          await reload();
+        }
+      })),
+      { text: 'Cancel', style: 'cancel' as const }
+    ];
+    Alert.alert('Move to project', undefined, options);
+  };
+
+  const onLongPress = (c: Conversation) => {
+    Alert.alert(c.title, undefined, [
+      { text: 'Rename', onPress: () => promptRename(c) },
+      { text: 'Move to project', onPress: () => promptMoveToProject(c) },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(c) },
+      { text: 'Cancel', style: 'cancel' }
+    ]);
   };
 
   const startFromSkill = async (skill: Skill) => {
@@ -205,6 +287,8 @@ export const ConversationListScreen = () => {
             return (
               <Pressable
                 onPress={() => router.push(`/conversation/${c.id}`)}
+                onLongPress={() => onLongPress(c)}
+                delayLongPress={400}
                 style={{ paddingHorizontal: t.spacing.lg, paddingVertical: t.spacing.sm + 2 }}
               >
                 <View
