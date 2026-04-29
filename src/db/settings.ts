@@ -11,6 +11,11 @@ export type Settings = {
   /** Eagerly load the active model on app launch so the first message
    *  doesn't pay warmup latency. Costs RAM continuously while app is open. */
   prewarm_on_launch: boolean;
+  /** When on, retrieval-augmented generation pulls relevant snippets from
+   *  past conversations into each prompt. */
+  retrieval_enabled: boolean;
+  /** Max snippets to inject per send. */
+  retrieval_k: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,7 +24,9 @@ export const DEFAULT_SETTINGS: Settings = {
   max_tokens: 1024,
   context_window: 4096,
   theme: 'system',
-  prewarm_on_launch: false
+  prewarm_on_launch: false,
+  retrieval_enabled: true,
+  retrieval_k: 4
 };
 
 export const getSetting = async <K extends keyof Settings>(key: K): Promise<Settings[K]> => {

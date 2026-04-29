@@ -117,4 +117,38 @@ describe('buildPrompt', () => {
     expect(r.text.indexOf('first-user')).toBeLessThan(r.text.indexOf('first-asst'));
     expect(r.text.indexOf('first-asst')).toBeLessThan(r.text.indexOf(baseArgs.newUserTurn));
   });
+
+  it('includes RELEVANT FROM PAST block when snippets are provided', () => {
+    const r = buildPrompt({
+      ...baseArgs,
+      relevantSnippets: [
+        { source: '~/acme/board-prep', excerpt: 'Tom said the timeline is tight' },
+        { source: '~/acme/q4-plan', excerpt: 'Migration scoped for Q1' }
+      ]
+    });
+    expect(r.text).toContain('RELEVANT FROM PAST');
+    expect(r.text).toContain('[~/acme/board-prep]');
+    expect(r.text).toContain('Tom said the timeline is tight');
+    expect(r.text).toContain('Migration scoped for Q1');
+  });
+
+  it('omits RELEVANT block when snippets array is empty', () => {
+    const r = buildPrompt({ ...baseArgs, relevantSnippets: [] });
+    expect(r.text).not.toContain('RELEVANT FROM PAST');
+  });
+
+  it('drops RELEVANT block (rather than throwing) if it would exceed budget', () => {
+    const long = 'x'.repeat(1500);
+    const r = buildPrompt({
+      ...baseArgs,
+      contextWindow: 1024,
+      reservedForResponse: 256,
+      relevantSnippets: [
+        { source: 'a', excerpt: long },
+        { source: 'b', excerpt: long }
+      ]
+    });
+    // Build succeeds and the snippets are NOT in the prompt.
+    expect(r.text).not.toContain(long);
+  });
 });

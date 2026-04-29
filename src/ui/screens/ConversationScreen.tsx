@@ -54,7 +54,8 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     send,
     stop,
     retry,
-    reload
+    reload,
+    retrievedCount
   } = useConversation(conversationId);
   const listRef = useRef<FlatList>(null);
   const [activeModel, setActiveModel] = useState<string>('');
@@ -338,6 +339,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
 
   const isStreaming = status === 'streaming';
   const isWarming = status === 'warming';
+  const showRetrievalIndicator = (isStreaming || isWarming) && retrievedCount > 0;
 
   const statusState: StatusLineState = isWarming
     ? { kind: 'warming' }
@@ -506,6 +508,21 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         onScroll={onListScroll}
         scrollEventThrottle={64}
       />
+      {showRetrievalIndicator ? (
+        <View
+          style={{
+            paddingHorizontal: t.spacing.lg,
+            paddingVertical: 4,
+            borderTopWidth: 1,
+            borderTopColor: t.colors.border.subtle,
+            backgroundColor: t.colors.bg.canvas
+          }}
+        >
+          <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+            ↺ {retrievedCount} relevant snippet{retrievedCount === 1 ? '' : 's'} from past conversations
+          </Text>
+        </View>
+      ) : null}
       <Composer
         status={statusState}
         isStreaming={isStreaming || isWarming}

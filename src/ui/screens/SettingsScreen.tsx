@@ -17,6 +17,12 @@ import { getEngine } from '@/engine';
 import { StepSlider } from '../components/StepSlider';
 import { useThemePref } from '../theme/ThemeProvider';
 import type { Theme as ThemePref } from '@/db/settings';
+import {
+  embeddingCoverage,
+  listUnembeddedMessageIds,
+  upsertEmbedding
+} from '@/db/embeddings';
+import { hashEmbed, HASH_EMBEDDER_NAME } from '@/chat/vectors';
 
 const fmtGB = (b: number) => `${(b / 1_000_000_000).toFixed(2)} GB`;
 
@@ -28,6 +34,15 @@ export const SettingsScreen = () => {
   const [used, setUsed] = useState(0);
   const [free, setFree] = useState(0);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<{ embedded: number; total: number }>({
+    embedded: 0,
+    total: 0
+  });
+  const [reindexing, setReindexing] = useState(false);
+
+  const refreshCoverage = async () => {
+    setCoverage(await embeddingCoverage());
+  };
 
   const reload = async () => {
     const s = await getAllSettings();
@@ -37,11 +52,47 @@ export const SettingsScreen = () => {
     setInstalled(inst);
     setUsed(await totalModelBytes(Object.keys(inst).filter((k) => inst[k])));
     setFree(await freeDiskBytes());
+    await refreshCoverage();
   };
 
   useEffect(() => {
     void reload();
   }, []);
+
+  const runReindex = async () => {
+    setReindexing(true);
+    try {
+      // Process in chunks of 200 messages so the UI stays responsive on
+      // larger histories. Each chunk: pull unembedded ids, embed, upsert.
+      let totalDone = 0;
+      // Disposable inner loop until no more unembedded messages remain.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const batch = await listUnembeddedMessageIds(200);
+        if (batch.length === 0) break;
+        for (const m of batch) {
+          if (!m.content || !m.content.trim()) continue;
+          await upsertEmbedding({
+            message_id: m.id,
+            vector: hashEmbed(m.content),
+            embedder: HASH_EMBEDDER_NAME
+          });
+          totalDone++;
+        }
+        await refreshCoverage();
+      }
+      Alert.alert(
+        'Re-index complete',
+        totalDone === 0
+          ? 'Everything was already indexed.'
+          : `Embedded ${totalDone} message${totalDone === 1 ? '' : 's'}.`
+      );
+    } catch (e) {
+      Alert.alert('Re-index failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setReindexing(false);
+    }
+  };
 
   const setActive = async (id: string) => {
     if (settings?.active_model_id === id) return;
@@ -297,6 +348,108 @@ export const SettingsScreen = () => {
               }}
             />
           </View>
+        </Pressable>
+
+        <Text
+          style={{
+            ...t.type.label,
+            color: t.colors.text.tertiary,
+            marginTop: t.spacing.xl,
+            marginBottom: t.spacing.sm
+          }}
+        >
+          RETRIEVAL
+        </Text>
+        <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginBottom: t.spacing.sm }}>
+          Pull relevant snippets from past conversations into each prompt. Hybrid keyword
+          (FTS) + feature-vector retrieval, fully on-device. Honest note: this is lexical, not
+          semantic — paraphrase-only queries won't always retrieve.
+        </Text>
+
+        <Pressable
+          onPress={() => {
+            const next = !settings.retrieval_enabled;
+            setSettings({ ...settings, retrieval_enabled: next });
+            void setSetting('retrieval_enabled', next);
+          }}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingVertical: t.spacing.md
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: t.spacing.md }}>
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+              ENABLE RETRIEVAL
+            </Text>
+            <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
+              Adds a `RELEVANT FROM PAST` block to each prompt when matches are found.
+            </Text>
+          </View>
+          <View
+            style={{
+              width: 44,
+              height: 26,
+              borderRadius: 13,
+              borderWidth: 1,
+              borderColor: settings.retrieval_enabled
+                ? t.colors.accent.warm
+                : t.colors.border.default,
+              backgroundColor: settings.retrieval_enabled
+                ? t.colors.accent.warm
+                : 'transparent',
+              padding: 2,
+              justifyContent: 'center'
+            }}
+          >
+            <View
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                backgroundColor: settings.retrieval_enabled
+                  ? t.colors.bg.canvas
+                  : t.colors.text.tertiary,
+                marginLeft: settings.retrieval_enabled ? 18 : 0
+              }}
+            />
+          </View>
+        </Pressable>
+
+        <StepSlider
+          label="MAX SNIPPETS"
+          hint="How many snippets to inject. Higher = more context, more tokens consumed."
+          value={settings.retrieval_k}
+          min={1}
+          max={8}
+          step={1}
+          onChange={(v) => {
+            setSettings({ ...settings, retrieval_k: v });
+            void setSetting('retrieval_k', v);
+          }}
+        />
+
+        <Text
+          style={{
+            ...t.type.meta,
+            color: t.colors.text.tertiary,
+            marginTop: t.spacing.sm
+          }}
+        >
+          INDEX COVERAGE: {coverage.embedded} / {coverage.total} messages
+        </Text>
+        <Pressable
+          onPress={runReindex}
+          disabled={reindexing}
+          style={{
+            paddingVertical: t.spacing.sm,
+            opacity: reindexing ? 0.6 : 1
+          }}
+        >
+          <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+            {reindexing ? 'INDEXING…' : 'RE-INDEX MISSING MESSAGES'}
+          </Text>
         </Pressable>
 
         <Text

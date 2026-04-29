@@ -1,4 +1,5 @@
-import { ChatEngine, GenerationOptions, StreamCallbacks } from './types';
+import { ChatEngine, EmbedResult, GenerationOptions, StreamCallbacks } from './types';
+import { HASH_EMBEDDER_NAME, hashEmbed } from '@/chat/vectors';
 
 export type FakeEngineConfig = {
   scriptedResponse?: string;
@@ -49,6 +50,10 @@ export const createFakeEngine = (cfg: FakeEngineConfig = {}): ChatEngine => {
         if (delay) await new Promise((r) => setTimeout(r, delay));
       }
       cb.onDone({ tokenCount: count, finishReason: 'stop' });
+    },
+
+    async embed(text: string): Promise<EmbedResult> {
+      return { vector: hashEmbed(text), embedder: HASH_EMBEDDER_NAME };
     },
 
     getContextLength() {

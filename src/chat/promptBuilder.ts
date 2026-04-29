@@ -2,6 +2,12 @@ import type { Message } from '@/db/messages';
 
 export type ProjectEntityRef = { name: string; description: string };
 
+export type RetrievedSnippet = {
+  /** Short label like `~/acme/board-prep` shown in the prompt. */
+  source: string;
+  excerpt: string;
+};
+
 export type BuildPromptArgs = {
   /**
    * The active persona's system prompt. Defines who the assistant is.
@@ -11,6 +17,8 @@ export type BuildPromptArgs = {
   projectNotes: string;
   /** Structured list of `name → description` entries scoped to the project. */
   projectEntities: ProjectEntityRef[];
+  /** Snippets retrieved from past conversations relevant to the new user turn. */
+  relevantSnippets?: RetrievedSnippet[];
   /** Conversation-specific system prompt (set by skill or by user override). */
   conversationSystemPrompt: string;
   history: Message[];
@@ -47,11 +55,25 @@ const composeProjectBlock = (
   return `PROJECT CONTEXT:\n${parts.join('\n\n')}`;
 };
 
+const composeRetrievalBlock = (snippets: RetrievedSnippet[] | undefined): string => {
+  if (!snippets || snippets.length === 0) return '';
+  const lines = snippets
+    .filter((s) => s.excerpt.trim())
+    .map((s) => `- [${s.source.trim()}] ${s.excerpt.trim()}`);
+  if (lines.length === 0) return '';
+  return [
+    'RELEVANT FROM PAST CONVERSATIONS (background only — only mention if directly useful):',
+    ...lines
+  ].join('\n');
+};
+
 const composeSystem = (a: BuildPromptArgs): string => {
   const parts: string[] = [];
   if (a.personaSystemPrompt.trim()) parts.push(a.personaSystemPrompt.trim());
   const projectBlock = composeProjectBlock(a.projectNotes, a.projectEntities);
   if (projectBlock) parts.push(projectBlock);
+  const retrievalBlock = composeRetrievalBlock(a.relevantSnippets);
+  if (retrievalBlock) parts.push(retrievalBlock);
   if (a.conversationSystemPrompt.trim()) parts.push(a.conversationSystemPrompt.trim());
   return parts.join('\n\n');
 };
@@ -63,12 +85,28 @@ export const buildPrompt = (args: BuildPromptArgs): BuildPromptResult => {
   const budget = args.contextWindow - args.reservedForResponse - SAFETY;
   if (budget <= 0) throw new Error('context window too small for reserved response');
 
-  const sys = composeSystem(args);
-  const sysBlock = sys ? `<|system|>\n${sys}\n\n` : '';
+  // Try to fit the full system block with retrieval. If retrieval pushes
+  // us over budget, drop retrieval and try again — better to lose context
+  // augmentation than to fail the send.
+  let effectiveArgs = args;
+  let sys = composeSystem(effectiveArgs);
+  let sysBlock = sys ? `<|system|>\n${sys}\n\n` : '';
   const newTurn = `${formatTurn('user', args.newUserTurn)}\n<|assistant|>\n`;
+  const newTurnTokens = approxTokens(newTurn);
+
+  if (
+    approxTokens(sysBlock) + newTurnTokens > budget &&
+    args.relevantSnippets &&
+    args.relevantSnippets.length > 0
+  ) {
+    const noSnippets: BuildPromptArgs = { ...args };
+    delete (noSnippets as Partial<BuildPromptArgs>).relevantSnippets;
+    effectiveArgs = noSnippets;
+    sys = composeSystem(effectiveArgs);
+    sysBlock = sys ? `<|system|>\n${sys}\n\n` : '';
+  }
 
   const sysTokens = approxTokens(sysBlock);
-  const newTurnTokens = approxTokens(newTurn);
   const fixedTokens = sysTokens + newTurnTokens;
 
   if (fixedTokens > budget) {

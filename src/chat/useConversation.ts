@@ -21,8 +21,31 @@ import { modelPath } from '@/model/storage';
 import { Persona, getPersona, getDefaultPersona } from '@/db/personas';
 import { listEntities } from '@/db/projectEntities';
 import { getSkill } from '@/db/skills';
+import { upsertEmbedding } from '@/db/embeddings';
+import { retrieveRelevant, RelevantSnippet } from './retrieve';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
+
+/**
+ * Embed and persist a message vector. Failures are swallowed — embeddings
+ * are an enhancement, not a hard requirement; the message itself is already
+ * persisted by the caller.
+ */
+const embedAndStore = async (
+  messageId: string,
+  text: string
+): Promise<void> => {
+  try {
+    if (!text.trim()) return;
+    const engine = getEngine();
+    if (!engine.isReady()) return;
+    const { vector, embedder } = await engine.embed(text);
+    if (!vector || vector.length === 0) return;
+    await upsertEmbedding({ message_id: messageId, vector, embedder });
+  } catch {
+    // Best-effort — see doc above.
+  }
+};
 
 export type UseConversationState = {
   conversation: Conversation | null;
@@ -33,6 +56,8 @@ export type UseConversationState = {
   error: string | null;
   tokenCount: number;
   tokRate: number;
+  /** Number of past-conversation snippets retrieved for the current send. */
+  retrievedCount: number;
 };
 
 export const useConversation = (conversationId: string) => {
@@ -44,7 +69,8 @@ export const useConversation = (conversationId: string) => {
     status: 'idle',
     error: null,
     tokenCount: 0,
-    tokRate: 0
+    tokRate: 0,
+    retrievedCount: 0
   });
   const abortRef = useRef<AbortController | null>(null);
   const settingsRef = useRef<Settings | null>(null);
@@ -109,6 +135,8 @@ export const useConversation = (conversationId: string) => {
         role: 'user',
         content: text
       });
+      // Best-effort embed of the user turn — runs in parallel with model warmup.
+      void embedAndStore(userMsg.id, text);
       // model_id is set after we've resolved the desired model below.
       const asstMsg = await appendMessage({
         conversation_id: conv.id,
@@ -122,11 +150,32 @@ export const useConversation = (conversationId: string) => {
         status: 'streaming',
         tokenCount: 0,
         tokRate: 0,
+        retrievedCount: 0,
         error: null
       }));
 
       // Persona temperature override falls back to settings default if persona has none.
       const effectiveTemp = persona?.temperature ?? settings.temperature;
+
+      // --- Retrieval (best-effort) -------------------------------------------
+      // Pull relevant snippets from prior conversations. Errors are swallowed
+      // — retrieval is an enhancement, not a hard requirement.
+      let snippets: RelevantSnippet[] = [];
+      if (settings.retrieval_enabled) {
+        try {
+          const retrieveOpts: Parameters<typeof retrieveRelevant>[1] = {
+            excludeConversationId: conv.id,
+            projectScope: project ? project.id : null,
+            limit: settings.retrieval_k
+          };
+          snippets = await retrieveRelevant(text, retrieveOpts);
+          if (snippets.length > 0) {
+            setState((s) => ({ ...s, retrievedCount: snippets.length }));
+          }
+        } catch {
+          // best-effort
+        }
+      }
 
       let prompt: string;
       try {
@@ -137,6 +186,15 @@ export const useConversation = (conversationId: string) => {
             name: e.name,
             description: e.description
           })),
+          relevantSnippets: snippets.map((s) => {
+            const projectSlug = s.project_id
+              ? '~/' // we don't have project name here cheaply; the conversation title is enough
+              : '~/inbox/';
+            return {
+              source: `${projectSlug}${s.conversation_title.toLowerCase().replace(/\s+/g, '-').slice(0, 28)}`,
+              excerpt: s.excerpt
+            };
+          }),
           conversationSystemPrompt: conv.system_prompt,
           history,
           newUserTurn: text,
@@ -228,6 +286,8 @@ export const useConversation = (conversationId: string) => {
               model_id: desiredModelId
             });
             await touchConversation(conv.id);
+            // Embed the assistant turn so future retrieval can surface it.
+            void embedAndStore(asstMsg.id, buffer);
             setState((s) => ({
               ...s,
               status: 'idle',

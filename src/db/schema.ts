@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Initial schema (v1). Used for `:memory:` test DBs.
@@ -86,6 +86,18 @@ CREATE TABLE IF NOT EXISTS project_entities (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pe_project ON project_entities(project_id);
+
+-- Per-message dense vectors for hybrid retrieval.
+-- Vectors are JSON-encoded number arrays; we compute cosine similarity in JS.
+-- For personal-scale corpora (hundreds of messages, low thousands), this is
+-- fast enough. To scale up, swap to sqlite-vec (requires op-sqlite).
+CREATE TABLE IF NOT EXISTS message_embeddings (
+  message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  vector TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  embedder TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 
 -- FTS5 virtual table for searching message content.
 -- Synced via triggers below; rebuilt on reinstall.
@@ -178,5 +190,14 @@ export const MIGRATIONS: Record<number, string[]> = {
   4: [
     // Per-skill model override. Falls back to active_model_id when null.
     `ALTER TABLE skills ADD COLUMN model_id TEXT`
+  ],
+  5: [
+    `CREATE TABLE IF NOT EXISTS message_embeddings (
+      message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      vector TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      embedder TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`
   ]
 };

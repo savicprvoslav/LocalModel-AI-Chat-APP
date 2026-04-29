@@ -17,6 +17,8 @@ export type StreamCallbacks = {
 
 export type LoadProgress = { phase: 'mmap' | 'warmup'; percent: number };
 
+export type EmbedResult = { vector: number[]; embedder: string };
+
 export interface ChatEngine {
   isReady(): boolean;
   load(modelPath: string, opts?: { onProgress?: (p: LoadProgress) => void }): Promise<void>;
@@ -26,5 +28,12 @@ export interface ChatEngine {
     options: GenerationOptions,
     cb: StreamCallbacks
   ): Promise<void>;
+  /**
+   * Produce a vector embedding of `text`. Implementations may use a real
+   * model (e.g., a separate embedding-mode llama context, or ONNX) or a
+   * deterministic fallback (feature hashing). The `embedder` field
+   * identifies which scheme was used so callers can avoid mixing schemes.
+   */
+  embed(text: string): Promise<EmbedResult>;
   getContextLength?(): number;
 }
