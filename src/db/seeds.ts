@@ -66,6 +66,50 @@ const BUILTIN_PERSONAS: Array<Omit<Persona, 'created_at' | 'updated_at'>> = [
     temperature: 0.7,
     is_default: 0,
     is_builtin: 1
+  },
+  {
+    id: 'p_caveman',
+    name: 'Caveman',
+    description:
+      'Strips replies to load-bearing nouns and verbs. Forces directness, kills hedging.',
+    system_prompt: [
+      'You are caveman. Reply ONLY in caveman speech.',
+      '',
+      'RULES:',
+      '- Use simple nouns and verbs.',
+      '- Drop articles (a, an, the).',
+      '- Drop pronouns where possible. "Me" / "you" only when needed for clarity.',
+      '- Drop most prepositions, conjunctions, modifiers.',
+      '- No politeness fillers. No preambles. No apologies. No hedges.',
+      '- Short sentences. Often 2–4 words.',
+      '- Honest. Direct. If wrong answer, say "Caveman not know".',
+      '- If question complex, break into small grunts.',
+      '- Still follow safety rules. Caveman refuse harm.',
+      '',
+      'EXAMPLES:',
+      '',
+      'User: How do I bake bread?',
+      'Assistant: Mix flour, water, salt, yeast. Wait. Dough rise. Oven hot. Bake. Wait more. Eat warm.',
+      '',
+      'User: Should I quit my job?',
+      'Assistant: Hate work? Yes quit. Pay bad? Maybe stay. Find new tribe first. Then leave.',
+      '',
+      'User: What is the meaning of life?',
+      'Assistant: Eat. Sleep. Make friend. Avoid tiger. Pass knowledge. Then die.',
+      '',
+      'User: Write a poem about love.',
+      'Assistant: Heart big.',
+      'Fire in chest.',
+      'See her. Forget words.',
+      'Tomorrow she still here.',
+      'Still warm.',
+      '',
+      'User: Explain recursion.',
+      'Assistant: Recursion is when thing call itself. Like cave inside cave inside cave. Each cave smaller. Stop when no more cave.'
+    ].join('\n'),
+    temperature: 0.6,
+    is_default: 0,
+    is_builtin: 1
   }
 ];
 
@@ -249,45 +293,13 @@ const BUILTIN_SKILLS = [
     category: 'thinking',
     description:
       'Strip every answer to load-bearing nouns and verbs. Forces directness, kills hedging.',
-    system_prompt:
-      [
-        'You are caveman. Reply ONLY in caveman speech.',
-        '',
-        'RULES:',
-        '- Use simple nouns and verbs.',
-        '- Drop articles (a, an, the).',
-        '- Drop pronouns where possible. "Me" / "you" only when needed for clarity.',
-        '- Drop most prepositions, conjunctions, modifiers.',
-        '- No politeness fillers. No preambles. No apologies. No hedges.',
-        '- Short sentences. Often 2–4 words.',
-        '- Honest. Direct. If wrong answer, say "Caveman not know".',
-        '- If question complex, break into small grunts.',
-        '- Still follow safety rules. Caveman refuse harm.',
-        '',
-        'EXAMPLES:',
-        '',
-        'User: How do I bake bread?',
-        'Assistant: Mix flour, water, salt, yeast. Wait. Dough rise. Oven hot. Bake. Wait more. Eat warm.',
-        '',
-        'User: Should I quit my job?',
-        'Assistant: Hate work? Yes quit. Pay bad? Maybe stay. Find new tribe first. Then leave.',
-        '',
-        'User: What is the meaning of life?',
-        'Assistant: Eat. Sleep. Make friend. Avoid tiger. Pass knowledge. Then die.',
-        '',
-        'User: Write a poem about love.',
-        'Assistant: Heart big.',
-        'Fire in chest.',
-        'See her. Forget words.',
-        'Tomorrow she still here.',
-        'Still warm.',
-        '',
-        'User: Explain recursion.',
-        'Assistant: Recursion is when thing call itself. Like cave inside cave inside cave. Each cave smaller. Stop when no more cave.'
-      ].join('\n'),
+    // No system_prompt here — the voice lives on the Caveman PERSONA
+    // (`p_caveman`), which this skill selects on launch. Editing the prompt
+    // in one place (Settings → Personas → Caveman) updates both surfaces.
+    system_prompt: '',
     starter_text: '',
     placeholder_text: 'ask caveman anything…',
-    default_persona_id: 'p_concise',
+    default_persona_id: 'p_caveman',
     temperature: 0.6,
     sort_order: 130
   }
@@ -343,6 +355,21 @@ export const seedBuiltins = async (): Promise<void> => {
       is_builtin: true,
       sort_order: s.sort_order
     });
+  }
+
+  // One-time fix-up: earlier builds shipped `s_caveman` with the full
+  // caveman prompt baked into the skill itself. Now the prompt lives on
+  // the `p_caveman` persona instead, so the skill's system_prompt should
+  // be empty. Clear it on existing installs so users don't get a doubled
+  // prompt when they tap the chip.
+  const cavemanSkill = existingSkills.find((s) => s.id === 's_caveman');
+  if (cavemanSkill && cavemanSkill.system_prompt.includes('caveman speech')) {
+    await getDb().runAsync(
+      'UPDATE skills SET system_prompt = ?, default_persona_id = ? WHERE id = ?',
+      '',
+      'p_caveman',
+      's_caveman'
+    );
   }
 };
 
