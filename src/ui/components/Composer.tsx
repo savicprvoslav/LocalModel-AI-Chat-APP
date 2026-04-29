@@ -3,7 +3,6 @@ import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { StatusLineState } from './StatusLine';
-import { FenceBox } from './FenceBox';
 import { hapticImpactLight } from '@/haptics';
 
 type Props = {
@@ -143,49 +142,45 @@ export const Composer = ({
         paddingBottom: insets.bottom + t.spacing.sm
       }}
     >
-      {/* Fence-box status line — flips to warm border while streaming/erroring */}
-      <View style={{ paddingHorizontal: t.spacing.md, paddingTop: t.spacing.md + 4 }}>
-        <Pressable
-          onPress={isRetryable ? onRetry : undefined}
-          disabled={!isRetryable}
+      {/* Status line — bare meta, no fence-box decoration. Warm color
+          carries the streaming / warming / error states; the idle/typing
+          line is quiet tertiary text. */}
+      <Pressable
+        onPress={isRetryable ? onRetry : undefined}
+        disabled={!isRetryable}
+        style={{
+          paddingHorizontal: t.spacing.md + 2,
+          paddingTop: t.spacing.sm + 2,
+          paddingBottom: 2,
+          flexDirection: 'row',
+          alignItems: 'baseline',
+          gap: t.spacing.sm
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            fontFamily: t.fonts.mono,
+            fontSize: 11,
+            lineHeight: 16,
+            color: sl.warm ? t.colors.accent.warm : t.colors.text.tertiary,
+            flex: 1
+          }}
         >
-          <FenceBox
-            lang={sl.lang}
-            borderColor={sl.warm ? t.colors.accent.warm : t.colors.border.default}
+          {sl.left}
+        </Text>
+        {sl.right ? (
+          <Text
+            style={{
+              fontFamily: t.fonts.mono,
+              fontSize: 11,
+              color: t.colors.text.tertiary
+            }}
           >
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between'
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: t.fonts.mono,
-                  fontSize: 12,
-                  lineHeight: 18,
-                  color: sl.warm ? t.colors.accent.warm : t.colors.text.secondary,
-                  flex: 1
-                }}
-              >
-                {sl.left}
-              </Text>
-              {sl.right ? (
-                <Text
-                  style={{
-                    fontFamily: t.fonts.mono,
-                    fontSize: 11,
-                    color: t.colors.text.tertiary
-                  }}
-                >
-                  {sl.right}
-                </Text>
-              ) : null}
-            </View>
-          </FenceBox>
-        </Pressable>
-      </View>
+            {sl.right}
+          </Text>
+        ) : null}
+      </Pressable>
 
       {/* Composer row: $ prompt — textarea — STOP / send arrow */}
       <View

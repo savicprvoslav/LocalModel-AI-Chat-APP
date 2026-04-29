@@ -15,8 +15,6 @@ import { useTheme } from '../theme/useTheme';
 import { MessageBubble } from '../components/MessageBubble';
 import { Composer } from '../components/Composer';
 import type { StatusLineState } from '../components/StatusLine';
-import { AsciiBlock } from '../components/AsciiBlock';
-import { FenceBox } from '../components/FenceBox';
 import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
 import { WarmingLog, WarmingStage } from '../components/WarmingLog';
 import { RetrievalPeek, RetrievalSnippetView } from '../components/RetrievalPeek';
@@ -428,79 +426,117 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         </Pressable>
       </View>
 
-      {/* Persona / skill banner — slash-style skill pill + persona chip */}
-      {persona || skill ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            paddingHorizontal: t.spacing.lg,
-            paddingVertical: t.spacing.sm,
-            gap: t.spacing.sm,
-            alignItems: 'center',
-            borderBottomWidth: 1,
-            borderBottomColor: t.colors.border.subtle,
-            backgroundColor: t.colors.bg.subtle
-          }}
-        >
-          {skill ? (
-            <Pressable
-              onPress={() => router.push(`/skill/${skill.id}`)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 9,
-                paddingVertical: 4,
-                borderWidth: 1,
-                borderColor: t.colors.accent.warm,
-                borderRadius: t.radii.sm
-              }}
-            >
-              <Text
+      {/* Persona / skill banner — one pill, no model label.
+          - If a skill is active and its default persona matches the current
+            persona, show only the skill pill (they're the same identity).
+          - If only persona, show that.
+          - Model name lives on the composer status line below; no need to
+            duplicate it here. */}
+      {(() => {
+        if (!persona && !skill) return null;
+        const skillSubsumes = skill && persona && skill.default_persona_id === persona.id;
+        const showSkillOnly = !!skill;
+        const showPersonaOnly = !skill && !!persona;
+        return (
+          <View
+            style={{
+              flexDirection: 'row',
+              paddingHorizontal: t.spacing.lg,
+              paddingVertical: t.spacing.sm,
+              gap: t.spacing.sm,
+              alignItems: 'center',
+              borderBottomWidth: 1,
+              borderBottomColor: t.colors.border.subtle,
+              backgroundColor: t.colors.bg.subtle
+            }}
+          >
+            {showSkillOnly && skill ? (
+              <Pressable
+                onPress={() => router.push(`/skill/${skill.id}`)}
                 style={{
-                  fontFamily: t.fonts.mono,
-                  fontSize: 9.5,
-                  fontWeight: '600',
-                  letterSpacing: 0.6,
-                  color: t.colors.accent.warm
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 9,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: t.colors.accent.warm,
+                  borderRadius: t.radii.sm
                 }}
               >
-                {`/${skill.name.toLowerCase()}`}
-              </Text>
-            </Pressable>
-          ) : null}
-          {persona ? (
-            <Pressable
-              onPress={onPersonaPillPress}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 9,
-                paddingVertical: 4,
-                borderWidth: 1,
-                borderColor: t.colors.border.subtle,
-                borderRadius: t.radii.sm
-              }}
-            >
-              <Text
+                <Text
+                  style={{
+                    fontFamily: t.fonts.mono,
+                    fontSize: 9.5,
+                    fontWeight: '600',
+                    letterSpacing: 0.6,
+                    color: t.colors.accent.warm
+                  }}
+                >
+                  {`/${skill.name.toLowerCase()}`}
+                </Text>
+              </Pressable>
+            ) : null}
+            {/* If the skill carries a different persona than active, surface
+                that explicitly so the user isn't surprised. Suppressed when
+                the skill subsumes the persona (the common case). */}
+            {showSkillOnly && persona && !skillSubsumes ? (
+              <Pressable
+                onPress={onPersonaPillPress}
                 style={{
-                  fontFamily: t.fonts.mono,
-                  fontSize: 9.5,
-                  fontWeight: '600',
-                  letterSpacing: 0.6,
-                  color: t.colors.text.secondary
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 9,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: t.colors.border.subtle,
+                  borderRadius: t.radii.sm
                 }}
               >
-                {`◎ ${persona.name.toUpperCase()}`}
-              </Text>
-            </Pressable>
-          ) : null}
-          <Text style={{ ...t.type.meta, color: t.colors.text.tertiary, marginLeft: 'auto' }}>
-            {activeModel || ''}
-          </Text>
-        </View>
-      ) : null}
+                <Text
+                  style={{
+                    fontFamily: t.fonts.mono,
+                    fontSize: 9.5,
+                    fontWeight: '600',
+                    letterSpacing: 0.6,
+                    color: t.colors.text.secondary
+                  }}
+                >
+                  {`◎ ${persona.name.toUpperCase()}`}
+                </Text>
+              </Pressable>
+            ) : null}
+            {showPersonaOnly && persona ? (
+              <Pressable
+                onPress={onPersonaPillPress}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 9,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: t.colors.border.subtle,
+                  borderRadius: t.radii.sm
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: t.fonts.mono,
+                    fontSize: 9.5,
+                    fontWeight: '600',
+                    letterSpacing: 0.6,
+                    color: t.colors.text.secondary
+                  }}
+                >
+                  {`◎ ${persona.name.toUpperCase()}`}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })()}
 
       <FlatList
         ref={listRef}
@@ -522,52 +558,38 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
           />
         )}
         ListEmptyComponent={
-          <View style={{ paddingVertical: t.spacing.xl, gap: t.spacing.md }}>
-            <AsciiBlock warm size={10}>{`  ╭───────────────────────╮
-  │  ready when you are.  │
-  ╰───────────────────────╯`}</AsciiBlock>
+          // Empty state — single block: skill OR persona description in
+          // serif, no chrome. The fence-box decoration and ASCII banner
+          // were redundant when the skill identity was already in the
+          // banner pill above.
+          <View style={{ paddingTop: t.spacing.xl, gap: t.spacing.sm + 2 }}>
             {skill ? (
-              <FenceBox lang="skill">
-                <Text
-                  style={{
-                    fontFamily: t.fonts.mono,
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: t.colors.accent.warm,
-                    marginBottom: 4
-                  }}
-                >
-                  {`/${skill.name.toLowerCase()}`}
-                </Text>
-                {skill.description ? (
-                  <Text style={{ ...t.type.bodyAi, color: t.colors.text.secondary, fontSize: 14 }}>
-                    {skill.description}
-                  </Text>
-                ) : null}
-              </FenceBox>
-            ) : null}
-            {persona && !skill ? (
-              <FenceBox lang="persona">
-                <Text
-                  style={{
-                    ...t.type.label,
-                    color: t.colors.text.tertiary,
-                    marginBottom: 4
-                  }}
-                >
-                  {`◎ ${persona.name.toUpperCase()}`}
-                </Text>
-                {persona.description ? (
-                  <Text style={{ ...t.type.bodyAi, color: t.colors.text.secondary, fontSize: 14 }}>
-                    {persona.description}
-                  </Text>
-                ) : null}
-              </FenceBox>
+              <Text
+                style={{
+                  ...t.type.bodyAi,
+                  color: t.colors.text.secondary,
+                  fontSize: 15,
+                  lineHeight: 22
+                }}
+              >
+                {skill.description}
+              </Text>
+            ) : persona ? (
+              <Text
+                style={{
+                  ...t.type.bodyAi,
+                  color: t.colors.text.secondary,
+                  fontSize: 15,
+                  lineHeight: 22
+                }}
+              >
+                {persona.description}
+              </Text>
             ) : null}
             <Text style={{ ...t.type.meta, color: t.colors.text.quiet }}>
               {skill?.starter_text
-                ? 'starter text waits in the composer below.'
-                : 'type below to start. enter sends, shift+enter for a newline.'}
+                ? 'starter text waits below · enter sends'
+                : 'enter sends · shift+enter newline'}
             </Text>
           </View>
         }
