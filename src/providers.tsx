@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './ui/theme/ThemeProvider';
 import { ErrorBoundary } from './ui/components/ErrorBoundary';
 import { initDb } from './db/db';
+import { usePrewarm } from './usePrewarm';
 
 type Props = { children: ReactNode };
 
@@ -24,8 +25,15 @@ export const AppProviders = ({ children }: Props) => {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <PrewarmRunner>{children}</PrewarmRunner>
+        </ThemeProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
   );
+};
+
+const PrewarmRunner = ({ children }: { children: ReactNode }) => {
+  usePrewarm();
+  return <>{children}</>;
 };

@@ -8,6 +8,9 @@ export type Settings = {
   max_tokens: number;
   context_window: number;
   theme: Theme;
+  /** Eagerly load the active model on app launch so the first message
+   *  doesn't pay warmup latency. Costs RAM continuously while app is open. */
+  prewarm_on_launch: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -15,7 +18,8 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 0.7,
   max_tokens: 1024,
   context_window: 4096,
-  theme: 'system'
+  theme: 'system',
+  prewarm_on_launch: false
 };
 
 export const getSetting = async <K extends keyof Settings>(key: K): Promise<Settings[K]> => {

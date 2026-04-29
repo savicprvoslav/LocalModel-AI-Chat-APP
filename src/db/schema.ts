@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Initial schema (v1). Used for `:memory:` test DBs.
@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS skills (
   starter_text TEXT NOT NULL DEFAULT '',
   placeholder_text TEXT NOT NULL DEFAULT '',
   default_persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL,
+  model_id TEXT,
   temperature REAL,
   is_builtin INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -173,5 +174,9 @@ export const MIGRATIONS: Record<number, string[]> = {
     END`,
     // Backfill the FTS index from any pre-existing messages.
     `INSERT INTO messages_fts(rowid, content) SELECT rowid, content FROM messages WHERE rowid NOT IN (SELECT rowid FROM messages_fts)`
+  ],
+  4: [
+    // Per-skill model override. Falls back to active_model_id when null.
+    `ALTER TABLE skills ADD COLUMN model_id TEXT`
   ]
 };

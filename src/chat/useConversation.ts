@@ -20,6 +20,7 @@ import { getCatalogEntry } from '@/model/catalog';
 import { modelPath } from '@/model/storage';
 import { Persona, getPersona, getDefaultPersona } from '@/db/personas';
 import { listEntities } from '@/db/projectEntities';
+import { getSkill } from '@/db/skills';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
 
@@ -108,6 +109,7 @@ export const useConversation = (conversationId: string) => {
         role: 'user',
         content: text
       });
+      // model_id is set after we've resolved the desired model below.
       const asstMsg = await appendMessage({
         conversation_id: conv.id,
         role: 'assistant',
@@ -149,21 +151,30 @@ export const useConversation = (conversationId: string) => {
         return;
       }
 
+      // Resolve which model this conversation should use:
+      // skill override → conversation's skill model_id → app's active_model_id
+      const skill = conv.skill_id ? await getSkill(conv.skill_id) : null;
+      const desiredModelId = skill?.model_id ?? settings.active_model_id;
+      if (!desiredModelId) {
+        setState((s) => ({ ...s, status: 'error', error: 'no active model' }));
+        return;
+      }
+      const entry = getCatalogEntry(desiredModelId);
+      if (!entry) {
+        setState((s) => ({ ...s, status: 'error', error: 'unknown model id' }));
+        return;
+      }
+
       const engine = getEngine();
-      if (!engine.isReady()) {
-        const modelId = settings.active_model_id;
-        if (!modelId) {
-          setState((s) => ({ ...s, status: 'error', error: 'no active model' }));
-          return;
-        }
-        const entry = getCatalogEntry(modelId);
-        if (!entry) {
-          setState((s) => ({ ...s, status: 'error', error: 'unknown model id' }));
-          return;
-        }
+      // If the engine is loaded with a different model than the skill wants,
+      // dispose the current one and load the desired one.
+      const currentPath = engine.isReady() ? modelPath(desiredModelId) : null;
+      if (!engine.isReady() || (skill?.model_id && skill.model_id !== settings.active_model_id)) {
+        // dispose if a different model is loaded
+        if (engine.isReady()) await engine.dispose();
         setState((s) => ({ ...s, status: 'warming' }));
         try {
-          await engine.load(modelPath(modelId));
+          await engine.load(modelPath(desiredModelId));
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           await finishMessage(asstMsg.id, { finish_reason: 'error' });
@@ -172,6 +183,8 @@ export const useConversation = (conversationId: string) => {
         }
         setState((s) => ({ ...s, status: 'streaming' }));
       }
+      // (currentPath is unused; kept above only as a visual reminder of the contract.)
+      void currentPath;
 
       abortRef.current = new AbortController();
       let buffer = '';
@@ -212,7 +225,7 @@ export const useConversation = (conversationId: string) => {
             await finishMessage(asstMsg.id, {
               finish_reason: finishReason,
               token_count: tokenCount,
-              ...(settings.active_model_id ? { model_id: settings.active_model_id } : {})
+              model_id: desiredModelId
             });
             await touchConversation(conv.id);
             setState((s) => ({

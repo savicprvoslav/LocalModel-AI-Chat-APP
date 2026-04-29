@@ -11,6 +11,8 @@ export type Skill = {
   starter_text: string;
   placeholder_text: string;
   default_persona_id: string | null;
+  /** Optional per-skill model override; null = use the user's active model. */
+  model_id: string | null;
   temperature: number | null;
   is_builtin: number; // 1 | 0
   sort_order: number;
@@ -28,6 +30,7 @@ export const createSkill = async (args: {
   starter_text?: string;
   placeholder_text?: string;
   default_persona_id?: string | null;
+  model_id?: string | null;
   temperature?: number | null;
   is_builtin?: boolean;
   sort_order?: number;
@@ -44,6 +47,7 @@ export const createSkill = async (args: {
     starter_text: args.starter_text ?? '',
     placeholder_text: args.placeholder_text ?? '',
     default_persona_id: args.default_persona_id ?? null,
+    model_id: args.model_id ?? null,
     temperature: args.temperature ?? null,
     is_builtin: args.is_builtin ? 1 : 0,
     sort_order: args.sort_order ?? 0,
@@ -51,7 +55,7 @@ export const createSkill = async (args: {
     updated_at: now
   };
   await getDb().runAsync(
-    'INSERT INTO skills(id,name,description,emoji,category,system_prompt,starter_text,placeholder_text,default_persona_id,temperature,is_builtin,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO skills(id,name,description,emoji,category,system_prompt,starter_text,placeholder_text,default_persona_id,model_id,temperature,is_builtin,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     s.id,
     s.name,
     s.description,
@@ -61,6 +65,7 @@ export const createSkill = async (args: {
     s.starter_text,
     s.placeholder_text,
     s.default_persona_id,
+    s.model_id,
     s.temperature,
     s.is_builtin,
     s.sort_order,
@@ -93,6 +98,7 @@ export const updateSkill = async (
       | 'starter_text'
       | 'placeholder_text'
       | 'default_persona_id'
+      | 'model_id'
       | 'temperature'
       | 'sort_order'
     >
@@ -114,6 +120,7 @@ export const updateSkill = async (
   setField('starter_text', patch.starter_text);
   setField('placeholder_text', patch.placeholder_text);
   setField('default_persona_id', patch.default_persona_id);
+  setField('model_id', patch.model_id);
   setField('temperature', patch.temperature);
   setField('sort_order', patch.sort_order);
   vals.push(id);
@@ -141,6 +148,7 @@ export const duplicateSkill = async (id: string): Promise<Skill> => {
     starter_text: s.starter_text,
     placeholder_text: s.placeholder_text,
     default_persona_id: s.default_persona_id,
+    model_id: s.model_id,
     temperature: s.temperature,
     is_builtin: false,
     sort_order: s.sort_order + 1

@@ -5,6 +5,7 @@ import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Skill, getSkill, updateSkill } from '@/db/skills';
 import { Persona, listPersonas } from '@/db/personas';
+import { CATALOG } from '@/model/catalog';
 
 type Props = { skillId: string };
 
@@ -19,6 +20,7 @@ export const SkillEditScreen = ({ skillId }: Props) => {
   const [starterText, setStarterText] = useState('');
   const [placeholderText, setPlaceholderText] = useState('');
   const [defaultPersonaId, setDefaultPersonaId] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(null);
   const [tempStr, setTempStr] = useState('0.7');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -34,6 +36,7 @@ export const SkillEditScreen = ({ skillId }: Props) => {
         setStarterText(s.starter_text);
         setPlaceholderText(s.placeholder_text);
         setDefaultPersonaId(s.default_persona_id);
+        setModelId(s.model_id);
         setTempStr(String(s.temperature ?? 0.7));
       }
       setPersonas(await listPersonas());
@@ -51,6 +54,7 @@ export const SkillEditScreen = ({ skillId }: Props) => {
         | 'starter_text'
         | 'placeholder_text'
         | 'default_persona_id'
+        | 'model_id'
         | 'temperature'
       >
     >
@@ -250,6 +254,62 @@ export const SkillEditScreen = ({ skillId }: Props) => {
                   }}
                 >
                   {p.name.toUpperCase()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text
+          style={{
+            ...t.type.label,
+            color: t.colors.text.tertiary,
+            marginTop: t.spacing.md
+          }}
+        >
+          MODEL OVERRIDE
+        </Text>
+        <Text style={{ ...t.type.meta, color: t.colors.text.quiet }}>
+          Force this skill to use a specific model regardless of the active default.
+          Useful for fast tasks (Compact) or hard ones (Capable).
+        </Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: t.spacing.sm
+          }}
+        >
+          {[
+            { id: null as string | null, label: 'USE ACTIVE' },
+            ...CATALOG.map((c) => ({ id: c.id, label: c.tier.toUpperCase() }))
+          ].map((opt) => {
+            const selected = modelId === opt.id;
+            return (
+              <Pressable
+                key={opt.id ?? 'use-active'}
+                onPress={() => {
+                  setModelId(opt.id);
+                  queueSave({ model_id: opt.id });
+                }}
+                style={{
+                  paddingHorizontal: t.spacing.sm,
+                  paddingVertical: 5,
+                  borderWidth: 1,
+                  borderColor: selected
+                    ? t.colors.accent.inverse
+                    : t.colors.border.default,
+                  backgroundColor: selected ? t.colors.bg.subtle : 'transparent',
+                  borderRadius: t.radii.sm
+                }}
+              >
+                <Text
+                  style={{
+                    ...t.type.label,
+                    color: selected ? t.colors.text.primary : t.colors.text.secondary
+                  }}
+                >
+                  {opt.label}
                 </Text>
               </Pressable>
             );

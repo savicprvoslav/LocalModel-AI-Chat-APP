@@ -24,6 +24,16 @@ import { Persona, listPersonas } from '@/db/personas';
 import { updateConversation, deleteConversation } from '@/db/conversations';
 import { clearMessagesForConversation } from '@/db/messages';
 import { PromptModal } from '../components/PromptModal';
+import { EntityProposalModal } from '../components/EntityProposalModal';
+import {
+  ProposedEntity,
+  extractEntities,
+  dedupeAgainstExisting
+} from '@/chat/extractEntities';
+import { listEntities, createEntity } from '@/db/projectEntities';
+import { getEngine } from '@/engine';
+import { modelExists, modelPath } from '@/model/storage';
+import { getCatalogEntry } from '@/model/catalog';
 
 type Props = {
   conversationId: string;
@@ -52,6 +62,9 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
   const [skill, setSkill] = useState<Skill | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [editPromptOpen, setEditPromptOpen] = useState(false);
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [proposalLoading, setProposalLoading] = useState(false);
+  const [proposals, setProposals] = useState<ProposedEntity[]>([]);
 
   // Track whether user is near the bottom of the message list. We only
   // auto-scroll on new content when they are — otherwise streaming would
@@ -153,6 +166,61 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     );
   };
 
+  const runExtractEntities = async () => {
+    if (!conversation || !project) {
+      Alert.alert(
+        'No project',
+        'Move this conversation into a project first — entities are scoped to projects.'
+      );
+      return;
+    }
+    if (messages.length === 0) {
+      Alert.alert('Empty conversation', 'Send a few messages first so there\'s something to extract.');
+      return;
+    }
+    setProposals([]);
+    setProposalLoading(true);
+    setProposalOpen(true);
+    try {
+      // Make sure a model is loaded.
+      const engine = getEngine();
+      if (!engine.isReady()) {
+        const id = await getSetting('active_model_id');
+        if (!id || !(await modelExists(id))) {
+          Alert.alert('No model', 'Install a model in Settings first.');
+          setProposalOpen(false);
+          return;
+        }
+        if (!getCatalogEntry(id)) {
+          Alert.alert('Unknown model', 'The active model id isn\'t in the catalog.');
+          setProposalOpen(false);
+          return;
+        }
+        await engine.load(modelPath(id));
+      }
+      const proposed = await extractEntities(messages, { maxTokens: 512 });
+      const existing = await listEntities(project.id);
+      setProposals(dedupeAgainstExisting(proposed, existing));
+    } catch (e) {
+      Alert.alert('Extraction failed', e instanceof Error ? e.message : String(e));
+      setProposalOpen(false);
+    } finally {
+      setProposalLoading(false);
+    }
+  };
+
+  const handleProposalAccept = async (selected: ProposedEntity[]) => {
+    setProposalOpen(false);
+    if (!project || selected.length === 0) return;
+    for (const p of selected) {
+      await createEntity({
+        project_id: project.id,
+        name: p.name,
+        description: p.description
+      });
+    }
+  };
+
   const confirmDeleteConversation = () => {
     if (!conversation) return;
     Alert.alert('Delete conversation?', `"${conversation.title}" will be removed.`, [
@@ -170,9 +238,12 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
 
   const onOverflowPress = () => {
     if (!conversation) return;
-    const actions = [
+    const actions: Array<{ label: string; run: () => void; destructive?: boolean }> = [
       { label: 'Rename', run: promptRename },
       { label: 'Edit system prompt', run: promptEditSystemPrompt },
+      ...(project
+        ? [{ label: 'Extract entities to project', run: () => void runExtractEntities() }]
+        : []),
       { label: 'Export as Markdown', run: () => void exportMarkdown() },
       { label: 'Clear history', run: confirmClearHistory, destructive: true },
       { label: 'Delete conversation', run: confirmDeleteConversation, destructive: true }
@@ -461,6 +532,13 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         placeholder="Be terse. Lead with the headline."
         onSubmit={handleEditPromptSubmit}
         onCancel={() => setEditPromptOpen(false)}
+      />
+      <EntityProposalModal
+        visible={proposalOpen}
+        loading={proposalLoading}
+        proposals={proposals}
+        onAccept={handleProposalAccept}
+        onCancel={() => setProposalOpen(false)}
       />
     </KeyboardAvoidingView>
   );

@@ -246,6 +246,59 @@ export const SettingsScreen = () => {
           }}
         />
 
+        <Pressable
+          onPress={() => {
+            const next = !settings.prewarm_on_launch;
+            setSettings({ ...settings, prewarm_on_launch: next });
+            void setSetting('prewarm_on_launch', next);
+          }}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingVertical: t.spacing.md,
+            marginTop: t.spacing.sm
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: t.spacing.md }}>
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+              PRE-WARM ON LAUNCH
+            </Text>
+            <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
+              Load the active model on app boot so the first message has no warmup wait.
+              Costs RAM continuously.
+            </Text>
+          </View>
+          <View
+            style={{
+              width: 44,
+              height: 26,
+              borderRadius: 13,
+              borderWidth: 1,
+              borderColor: settings.prewarm_on_launch
+                ? t.colors.accent.warm
+                : t.colors.border.default,
+              backgroundColor: settings.prewarm_on_launch
+                ? t.colors.accent.warm
+                : 'transparent',
+              padding: 2,
+              justifyContent: 'center'
+            }}
+          >
+            <View
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                backgroundColor: settings.prewarm_on_launch
+                  ? t.colors.bg.canvas
+                  : t.colors.text.tertiary,
+                marginLeft: settings.prewarm_on_launch ? 18 : 0
+              }}
+            />
+          </View>
+        </Pressable>
+
         <Text
           style={{
             ...t.type.label,

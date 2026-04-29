@@ -287,6 +287,9 @@ export const seedBuiltins = async (): Promise<void> => {
       starter_text: s.starter_text,
       placeholder_text: s.placeholder_text,
       default_persona_id: s.default_persona_id,
+      // model_id stays null — built-ins inherit the user's active model.
+      // The user can override per skill in SkillEdit.
+      model_id: null,
       temperature: s.temperature,
       is_builtin: true,
       sort_order: s.sort_order
