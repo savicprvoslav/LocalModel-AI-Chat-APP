@@ -40,6 +40,13 @@ Step-by-step in [`MORNING.md`](./MORNING.md).
 ## Quick start
 
 ```bash
+eas login
+eas build --profile development --platform ios
+# wait ~25 min, install the .ipa it produces (drag onto device in Finder, or scan QR from EAS dashboard)
+npx expo start --dev-client
+```
+
+```bash
 npm install                              # .npmrc sets legacy-peer-deps=true automatically
 npm test                                 # 59 tests pass
 npm run typecheck                        # 0 errors
