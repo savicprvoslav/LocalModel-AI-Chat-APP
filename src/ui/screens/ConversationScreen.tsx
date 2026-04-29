@@ -23,6 +23,7 @@ import { Skill, getSkill } from '@/db/skills';
 import { Persona, listPersonas } from '@/db/personas';
 import { updateConversation, deleteConversation } from '@/db/conversations';
 import { clearMessagesForConversation } from '@/db/messages';
+import { PromptModal } from '../components/PromptModal';
 
 type Props = {
   conversationId: string;
@@ -42,12 +43,42 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     tokRate,
     send,
     stop,
+    retry,
     reload
   } = useConversation(conversationId);
   const listRef = useRef<FlatList>(null);
   const [activeModel, setActiveModel] = useState<string>('');
   const [ctx, setCtx] = useState<number>(4096);
   const [skill, setSkill] = useState<Skill | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [editPromptOpen, setEditPromptOpen] = useState(false);
+
+  // Track whether user is near the bottom of the message list. We only
+  // auto-scroll on new content when they are — otherwise streaming would
+  // yank them up while they're scrolled to read older messages.
+  const stickToBottomRef = useRef(true);
+  const lastScrollHeightRef = useRef(0);
+
+  const onListScroll = (e: {
+    nativeEvent: {
+      contentOffset: { y: number };
+      contentSize: { height: number };
+      layoutMeasurement: { height: number };
+    };
+  }) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    stickToBottomRef.current = distanceFromBottom < 80;
+  };
+
+  const onListContentSizeChange = (_: number, h: number) => {
+    const grew = h > lastScrollHeightRef.current;
+    lastScrollHeightRef.current = h;
+    if (grew && stickToBottomRef.current) {
+      listRef.current?.scrollToEnd({ animated: true });
+    }
+  };
 
   const exportMarkdown = async () => {
     if (!conversation) return;
@@ -80,49 +111,27 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
 
   const promptRename = () => {
     if (!conversation) return;
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        'Rename conversation',
-        undefined,
-        async (text) => {
-          const trimmed = (text ?? '').trim();
-          if (!trimmed) return;
-          await updateConversation(conversation.id, { title: trimmed });
-          await reload();
-        },
-        'plain-text',
-        conversation.title
-      );
-    } else {
-      // Android: edit by tapping title in header (future: themed modal).
-      Alert.alert(
-        'Rename',
-        'On Android, tap the conversation title in the header to rename.'
-      );
-    }
+    setRenameOpen(true);
   };
 
   const promptEditSystemPrompt = () => {
     if (!conversation) return;
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        'System prompt for this conversation',
-        'Layered on top of the active persona. Empty to clear.',
-        async (text) => {
-          await updateConversation(conversation.id, {
-            system_prompt: (text ?? '').trim()
-          });
-          await reload();
-        },
-        'plain-text',
-        conversation.system_prompt
-      );
-    } else {
-      Alert.alert(
-        'Edit system prompt',
-        'Available on iOS only in this build. Future: themed modal for Android.'
-      );
-    }
+    setEditPromptOpen(true);
+  };
+
+  const handleRenameSubmit = async (text: string) => {
+    setRenameOpen(false);
+    const trimmed = text.trim();
+    if (!conversation || !trimmed) return;
+    await updateConversation(conversation.id, { title: trimmed });
+    await reload();
+  };
+
+  const handleEditPromptSubmit = async (text: string) => {
+    setEditPromptOpen(false);
+    if (!conversation) return;
+    await updateConversation(conversation.id, { system_prompt: text.trim() });
+    await reload();
   };
 
   const confirmClearHistory = () => {
@@ -287,6 +296,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
           </Pressable>
         }
         title={conversation?.title ?? '…'}
+        onTitlePress={conversation ? promptRename : undefined}
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm }}>
             {project ? (
@@ -421,16 +431,36 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
             </Text>
           </View>
         }
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={onListContentSizeChange}
+        onScroll={onListScroll}
+        scrollEventThrottle={64}
       />
       <Composer
         status={statusState}
         isStreaming={isStreaming || isWarming}
         onSend={send}
         onStop={stop}
+        onRetry={status === 'error' ? () => void retry() : undefined}
         disabled={!conversation}
         placeholder={placeholder}
         initialValue={starterText}
+      />
+      <PromptModal
+        visible={renameOpen}
+        title="Rename conversation"
+        initialValue={conversation?.title ?? ''}
+        onSubmit={handleRenameSubmit}
+        onCancel={() => setRenameOpen(false)}
+      />
+      <PromptModal
+        visible={editPromptOpen}
+        title="Conversation system prompt"
+        hint="Layered on top of the active persona. Leave empty to clear."
+        multiline
+        initialValue={conversation?.system_prompt ?? ''}
+        placeholder="Be terse. Lead with the headline."
+        onSubmit={handleEditPromptSubmit}
+        onCancel={() => setEditPromptOpen(false)}
       />
     </KeyboardAvoidingView>
   );

@@ -263,5 +263,38 @@ export const useConversation = (conversationId: string) => {
     abortRef.current?.abort();
   }, []);
 
-  return { ...state, send, stop, reload };
+  /**
+   * Retry the last user message after an error/cancel.
+   * Removes the failed assistant row + its triggering user row, then re-sends.
+   */
+  const retry = useCallback(async () => {
+    if (state.status === 'streaming' || state.status === 'warming') return;
+    const msgs = state.messages;
+    // Find the last user message (most recent send).
+    let lastUserIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx === -1) return;
+    const lastUser = msgs[lastUserIdx]!;
+
+    // Delete trailing user + any assistant turns after it (typically one error/cancelled row).
+    const { deleteMessage } = await import('@/db/messages');
+    const toDelete = msgs.slice(lastUserIdx);
+    for (const m of toDelete) {
+      await deleteMessage(m.id);
+    }
+    setState((s) => ({
+      ...s,
+      status: 'idle',
+      error: null,
+      messages: s.messages.slice(0, lastUserIdx)
+    }));
+    await send(lastUser.content);
+  }, [state.status, state.messages, send]);
+
+  return { ...state, send, stop, retry, reload };
 };

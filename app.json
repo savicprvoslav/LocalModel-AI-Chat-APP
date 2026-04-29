@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.local.chat"
+      "bundleIdentifier": "com.local.chat",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.local.chat",
@@ -36,6 +39,12 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fd4d15b8-8e24-4b1b-9427-44ed4f0aaa34"
+      }
     }
   }
 }

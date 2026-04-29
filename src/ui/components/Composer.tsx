@@ -11,6 +11,7 @@ type Props = {
   isStreaming?: boolean;
   onSend: (text: string) => void;
   onStop?: () => void;
+  onRetry?: () => void;
   placeholder?: string;
   /** Initial text to seed the composer (e.g., from a skill's starter_text). */
   initialValue?: string;
@@ -22,6 +23,7 @@ export const Composer = ({
   isStreaming,
   onSend,
   onStop,
+  onRetry,
   placeholder = 'message',
   initialValue
 }: Props) => {
@@ -75,7 +77,7 @@ export const Composer = ({
         backgroundColor: t.colors.bg.canvas
       }}
     >
-      <StatusLine state={liveStatus} />
+      <StatusLine state={liveStatus} onRetry={onRetry} />
       <View
         style={{
           flexDirection: 'row',

@@ -1,17 +1,26 @@
 import { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 
 type Props = {
   left?: ReactNode;
   title?: string;
+  /** When provided, the title becomes a pressable. */
+  onTitlePress?: () => void;
   right?: ReactNode;
 };
 
-export const ScreenHeader = ({ left, title, right }: Props) => {
+export const ScreenHeader = ({ left, title, onTitlePress, right }: Props) => {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+
+  const titleEl = title ? (
+    <Text style={{ ...t.type.heading, color: t.colors.text.primary }} numberOfLines={1}>
+      {title}
+    </Text>
+  ) : null;
+
   return (
     <View
       style={{
@@ -27,14 +36,13 @@ export const ScreenHeader = ({ left, title, right }: Props) => {
     >
       <View>{left}</View>
       <View style={{ flex: 1 }}>
-        {title ? (
-          <Text
-            style={{ ...t.type.heading, color: t.colors.text.primary }}
-            numberOfLines={1}
-          >
-            {title}
-          </Text>
-        ) : null}
+        {onTitlePress && titleEl ? (
+          <Pressable onPress={onTitlePress} hitSlop={6}>
+            {titleEl}
+          </Pressable>
+        ) : (
+          titleEl
+        )}
       </View>
       <View>{right}</View>
     </View>

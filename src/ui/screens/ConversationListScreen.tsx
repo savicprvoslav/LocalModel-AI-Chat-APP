@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -21,6 +20,7 @@ import {
 } from '@/db/conversations';
 import { listMessages } from '@/db/messages';
 import { Skill, listSkills } from '@/db/skills';
+import { PromptModal } from '../components/PromptModal';
 
 type Row =
   | { type: 'project-header'; project: Project }
@@ -40,6 +40,7 @@ export const ConversationListScreen = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
@@ -93,25 +94,17 @@ export const ConversationListScreen = () => {
   };
 
   const promptRename = (c: Conversation) => {
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        'Rename conversation',
-        undefined,
-        async (text) => {
-          const trimmed = (text ?? '').trim();
-          if (!trimmed) return;
-          await updateConversation(c.id, { title: trimmed });
-          await reload();
-        },
-        'plain-text',
-        c.title
-      );
-    } else {
-      // Android has no Alert.prompt; rename inline by navigating to a dedicated
-      // rename screen would be the proper fix. For v1.5 we just open the
-      // conversation — user can rename via the header tap.
-      router.push(`/conversation/${c.id}`);
-    }
+    setRenameTarget(c);
+  };
+
+  const handleRenameSubmit = async (text: string) => {
+    const target = renameTarget;
+    setRenameTarget(null);
+    if (!target) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    await updateConversation(target.id, { title: trimmed });
+    await reload();
   };
 
   const confirmDelete = (c: Conversation) => {
@@ -189,6 +182,24 @@ export const ConversationListScreen = () => {
           </View>
         }
       />
+      <Pressable
+        onPress={() => router.push('/projects')}
+        style={{
+          paddingHorizontal: t.spacing.lg,
+          paddingTop: t.spacing.md,
+          paddingBottom: t.spacing.sm,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottomWidth: 1,
+          borderBottomColor: t.colors.border.subtle
+        }}
+      >
+        <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+          PROJECTS ({projects.length})
+        </Text>
+        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>OPEN ›</Text>
+      </Pressable>
       {skills.length > 0 ? (
         <View>
           <Text
@@ -334,6 +345,13 @@ export const ConversationListScreen = () => {
           }}
         />
       )}
+      <PromptModal
+        visible={renameTarget !== null}
+        title="Rename conversation"
+        initialValue={renameTarget?.title ?? ''}
+        onSubmit={handleRenameSubmit}
+        onCancel={() => setRenameTarget(null)}
+      />
     </View>
   );
 };

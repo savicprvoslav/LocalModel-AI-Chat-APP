@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useTheme } from '../theme/useTheme';
 
 export type StatusLineState =
@@ -22,7 +22,13 @@ const breadcrumb = (project?: string, conv?: string): string => {
   return parts.join('/');
 };
 
-export const StatusLine = ({ state }: { state: StatusLineState }) => {
+type Props = {
+  state: StatusLineState;
+  /** Called when the status line is tapped while in `error` state. */
+  onRetry?: () => void;
+};
+
+export const StatusLine = ({ state, onRetry }: Props) => {
   const t = useTheme();
   let left: string;
   let right: string | null = null;
@@ -46,7 +52,7 @@ export const StatusLine = ({ state }: { state: StatusLineState }) => {
       break;
     case 'error':
       left = `✕ ${state.reason}`;
-      right = 'tap to retry';
+      right = onRetry ? 'tap to retry' : null;
       warm = true;
       break;
     case 'ctxFull':
@@ -56,8 +62,9 @@ export const StatusLine = ({ state }: { state: StatusLineState }) => {
   }
 
   const color = warm ? t.colors.accent.warm : t.colors.text.tertiary;
+  const isRetryable = state.kind === 'error' && !!onRetry;
 
-  return (
+  const inner = (
     <View
       style={{
         paddingHorizontal: t.spacing.md,
@@ -75,4 +82,9 @@ export const StatusLine = ({ state }: { state: StatusLineState }) => {
       ) : null}
     </View>
   );
+
+  if (isRetryable) {
+    return <Pressable onPress={onRetry}>{inner}</Pressable>;
+  }
+  return inner;
 };

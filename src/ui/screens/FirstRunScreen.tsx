@@ -6,6 +6,9 @@ import { CATALOG, DEFAULT_MODEL_ID } from '@/model/catalog';
 import { downloadModel } from '@/model/download';
 import { setSetting } from '@/db/settings';
 import { getDeviceRamGB } from '@/device';
+import { listConversations, createConversation } from '@/db/conversations';
+import { appendMessage } from '@/db/messages';
+import { getDefaultPersona } from '@/db/personas';
 
 type Props = { onComplete: () => void; deviceRamGB?: number };
 
@@ -32,6 +35,32 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
 
   const entry = CATALOG.find((e) => e.id === selected) ?? CATALOG[1]!;
 
+  const seedWelcomeIfFirstRun = async (): Promise<void> => {
+    // Only seed if there are no conversations yet (true first run, not a re-download).
+    const existing = await listConversations();
+    if (existing.length > 0) return;
+    const persona = await getDefaultPersona();
+    const conv = await createConversation({
+      title: 'Welcome',
+      ...(persona ? { persona_id: persona.id } : {})
+    });
+    await appendMessage({
+      conversation_id: conv.id,
+      role: 'assistant',
+      content: [
+        '**You\'re set.** This chat runs entirely on your device — no cloud, no account.',
+        '',
+        'A few things to try:',
+        '- Tap a **skill chip** above to start a task-shaped conversation',
+        '- Tap **+ NEW** for a blank chat',
+        '- Open **Settings** to switch personas, edit skills, or change the model',
+        '- Long-press any conversation to rename, move, or delete it',
+        '',
+        'Send any message to get started.'
+      ].join('\n')
+    });
+  };
+
   const start = async () => {
     setError(null);
     setDownloading(true);
@@ -42,6 +71,7 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
         skipShaCheck: true
       });
       await setSetting('active_model_id', entry.id);
+      await seedWelcomeIfFirstRun();
       onComplete();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

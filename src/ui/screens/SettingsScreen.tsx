@@ -15,11 +15,14 @@ import { downloadModel } from '@/model/download';
 import { getAllSettings, setSetting, Settings } from '@/db/settings';
 import { getEngine } from '@/engine';
 import { StepSlider } from '../components/StepSlider';
+import { useThemePref } from '../theme/ThemeProvider';
+import type { Theme as ThemePref } from '@/db/settings';
 
 const fmtGB = (b: number) => `${(b / 1_000_000_000).toFixed(2)} GB`;
 
 export const SettingsScreen = () => {
   const t = useTheme();
+  const { pref: themePref, setPref: setThemePref } = useThemePref();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
   const [used, setUsed] = useState(0);
@@ -242,6 +245,54 @@ export const SettingsScreen = () => {
             void setSetting('context_window', v);
           }}
         />
+
+        <Text
+          style={{
+            ...t.type.label,
+            color: t.colors.text.tertiary,
+            marginTop: t.spacing.xl,
+            marginBottom: t.spacing.sm
+          }}
+        >
+          APPEARANCE
+        </Text>
+        <Text
+          style={{
+            ...t.type.meta,
+            color: t.colors.text.quiet,
+            marginBottom: t.spacing.sm
+          }}
+        >
+          Dark is the hero treatment; light adapts. System follows your phone setting.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: t.spacing.sm, marginBottom: t.spacing.md }}>
+          {(['system', 'dark', 'light'] as ThemePref[]).map((p) => {
+            const selected = themePref === p;
+            return (
+              <Pressable
+                key={p}
+                onPress={() => void setThemePref(p)}
+                style={{
+                  paddingHorizontal: t.spacing.md,
+                  paddingVertical: t.spacing.sm,
+                  borderWidth: 1,
+                  borderColor: selected ? t.colors.accent.inverse : t.colors.border.default,
+                  backgroundColor: selected ? t.colors.bg.subtle : 'transparent',
+                  borderRadius: t.radii.sm
+                }}
+              >
+                <Text
+                  style={{
+                    ...t.type.label,
+                    color: selected ? t.colors.text.primary : t.colors.text.secondary
+                  }}
+                >
+                  {p.toUpperCase()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Text
           style={{
