@@ -20,7 +20,7 @@ import { WarmingLog, WarmingStage } from '../components/WarmingLog';
 import { RetrievalPeek, RetrievalSnippetView } from '../components/RetrievalPeek';
 import { useConversation } from '@/chat/useConversation';
 import { getSetting } from '@/db/settings';
-import { Skill, getSkill } from '@/db/skills';
+import { Skill, getSkill, listSkills } from '@/db/skills';
 import { Persona, listPersonas } from '@/db/personas';
 import { updateConversation, deleteConversation } from '@/db/conversations';
 import { clearMessagesForConversation } from '@/db/messages';
@@ -65,6 +65,8 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
   const [activeModel, setActiveModel] = useState<string>('');
   const [ctx, setCtx] = useState<number>(4096);
   const [skill, setSkill] = useState<Skill | null>(null);
+  /** Full skill list for the inline `/` slash autocomplete in the composer. */
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
   const [renameOpen, setRenameOpen] = useState(false);
   const [editPromptOpen, setEditPromptOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
@@ -313,8 +315,28 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     void (async () => {
       setActiveModel((await getSetting('active_model_id')) ?? '');
       setCtx(await getSetting('context_window'));
+      setAvailableSkills(await listSkills());
     })();
   }, []);
+
+  // Apply a skill to this conversation when invoked via the composer's
+  // slash menu. Mirrors what tapping a skill chip on the home screen
+  // would have done — but for an existing conversation, mid-stream.
+  // Persists for the rest of the conversation's life.
+  const applySkillToConversation = async (s: Skill): Promise<void> => {
+    if (!conversation) return;
+    await updateConversation(conversation.id, {
+      skill_id: s.id,
+      // Adopt the skill's default persona too — that's the whole point of
+      // the skill, and the persona pill in the banner reflects it.
+      ...(s.default_persona_id ? { persona_id: s.default_persona_id } : {}),
+      // The skill's system_prompt becomes this conversation's
+      // system_prompt. (For thin-wrapper skills like Caveman, this is
+      // empty and the persona carries the voice.)
+      system_prompt: s.system_prompt
+    });
+    await reload();
+  };
 
   useEffect(() => {
     void (async () => {
@@ -635,6 +657,8 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         disabled={!conversation}
         placeholder={placeholder}
         initialValue={starterText}
+        skills={availableSkills}
+        onApplySkill={(s) => void applySkillToConversation(s)}
       />
       <PromptModal
         visible={renameOpen}

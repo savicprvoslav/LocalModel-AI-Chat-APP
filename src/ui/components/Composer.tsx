@@ -3,7 +3,9 @@ import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { StatusLineState } from './StatusLine';
+import { SlashMenu } from './SlashMenu';
 import { hapticImpactLight } from '@/haptics';
+import type { Skill } from '@/db/skills';
 
 type Props = {
   status: StatusLineState;
@@ -15,6 +17,11 @@ type Props = {
   placeholder?: string;
   /** Initial text to seed the composer (e.g., from a skill's starter_text). */
   initialValue?: string;
+  /** Available skills, used by the inline `/` slash autocomplete. Optional. */
+  skills?: Skill[];
+  /** Fired when the user picks a skill from the slash menu. The composer has
+   *  already stripped the `/word` prefix from the input by the time this runs. */
+  onApplySkill?: (skill: Skill) => void;
 };
 
 /**
@@ -88,7 +95,9 @@ export const Composer = ({
   onStop,
   onRetry,
   placeholder = 'message',
-  initialValue
+  initialValue,
+  skills,
+  onApplySkill
 }: Props) => {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -123,6 +132,25 @@ export const Composer = ({
   const ctxLen = status.kind === 'empty' ? status.ctx : 0;
   const sl = renderStatusLine(liveStatus, value.length, ctxModelId, ctxLen);
   const isRetryable = liveStatus.kind === 'error' && !!onRetry;
+
+  // Slash autocomplete — fires only when the message starts with `/` AND
+  // we haven't typed past the first whitespace yet. Constrains to the
+  // "intent: invoke a skill" case; doesn't try to interpret mid-message
+  // slashes (e.g. URLs, file paths) as commands.
+  const slashMatch = /^\/(\S*)$/.exec(value);
+  const slashActive = !!skills && skills.length > 0 && !!slashMatch && !isStreaming;
+  const slashQuery = slashMatch?.[1] ?? '';
+
+  const handleSlashSelect = (skill: Skill) => {
+    // Strip the `/word ` prefix so the user's intent ("apply skill") is
+    // separated from message content. If they only typed `/cave`, the
+    // composer becomes empty and they keep typing.
+    const stripped = value.replace(/^\/\S*\s?/, '');
+    setValue(stripped);
+    onApplySkill?.(skill);
+    // Pull focus back to the input so they can keep typing.
+    inputRef.current?.focus();
+  };
 
   const send = () => {
     const trimmed = value.trim();
@@ -181,6 +209,14 @@ export const Composer = ({
           </Text>
         ) : null}
       </Pressable>
+
+      {slashActive && skills ? (
+        <SlashMenu
+          query={slashQuery}
+          skills={skills}
+          onSelect={handleSlashSelect}
+        />
+      ) : null}
 
       {/* Composer row: $ prompt — textarea — STOP / send arrow */}
       <View

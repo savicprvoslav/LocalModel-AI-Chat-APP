@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
@@ -14,7 +14,6 @@ import {
   deleteConversation
 } from '@/db/conversations';
 import { listMessages } from '@/db/messages';
-import { Skill, listSkills } from '@/db/skills';
 import { PromptModal } from '../components/PromptModal';
 import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
 import { SideMenu } from '../components/SideMenu';
@@ -36,7 +35,6 @@ export const ConversationListScreen = () => {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Row[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [convCount, setConvCount] = useState(0);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
@@ -45,7 +43,6 @@ export const ConversationListScreen = () => {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const reload = useCallback(async () => {
-    setSkills(await listSkills());
     const [projectsList, conversations] = await Promise.all([
       listProjects(),
       listConversations()
@@ -103,19 +100,6 @@ export const ConversationListScreen = () => {
   const newConversation = async () => {
     const c = await createConversation({ title: 'New conversation' });
     router.push(`/conversation/${c.id}`);
-  };
-
-  const startFromSkill = async (skill: Skill) => {
-    const c = await createConversation({
-      title: skill.name,
-      system_prompt: skill.system_prompt,
-      persona_id: skill.default_persona_id,
-      skill_id: skill.id
-    });
-    router.push({
-      pathname: `/conversation/${c.id}`,
-      params: skill.starter_text ? { starter: skill.starter_text } : {}
-    });
   };
 
   const promptRename = (c: Conversation) => setRenameTarget(c);
@@ -312,7 +296,7 @@ export const ConversationListScreen = () => {
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
       {compactHeader}
 
-      {rows.length === 0 && skills.length === 0 ? (
+      {rows.length === 0 ? (
         empty
       ) : (
         <FlatList
@@ -324,54 +308,11 @@ export const ConversationListScreen = () => {
                 ? `ph-${r.project.id}`
                 : `inbox-${i}`
           }
-          ListHeaderComponent={
-            skills.length > 0 ? (
-              <View style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.lg }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'baseline',
-                    marginBottom: t.spacing.sm + 2
-                  }}
-                >
-                  <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
-                    $ start with
-                  </Text>
-                  <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
-                    {`${skills.length} skills`}
-                  </Text>
-                </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: t.spacing.sm, paddingRight: t.spacing.lg }}
-                >
-                  {skills.map((s) => (
-                    <Pressable
-                      key={s.id}
-                      onPress={() => startFromSkill(s)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: t.colors.border.default,
-                        borderRadius: t.radii.sm
-                      }}
-                    >
-                      <Text style={{ ...t.type.bodyUserV2, color: t.colors.accent.warm }}>/</Text>
-                      <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.secondary }}>
-                        {s.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null
-          }
+          // Skills are no longer chip-stripped here — invoke them by typing
+          // `/skillname` in the composer of any conversation. Discoverable
+          // via the SideMenu drawer (Tools → Skills) and the slash menu
+          // overlay that fires while you're typing.
+          ListHeaderComponent={null}
           renderItem={({ item }) => {
             if (item.type === 'inbox-header') {
               return (
