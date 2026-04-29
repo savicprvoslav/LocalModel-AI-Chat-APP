@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -18,6 +17,9 @@ import { Composer } from '../components/Composer';
 import type { StatusLineState } from '../components/StatusLine';
 import { AsciiBlock } from '../components/AsciiBlock';
 import { FenceBox } from '../components/FenceBox';
+import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
+import { WarmingLog, WarmingStage } from '../components/WarmingLog';
+import { RetrievalPeek, RetrievalSnippetView } from '../components/RetrievalPeek';
 import { useConversation } from '@/chat/useConversation';
 import { getSetting } from '@/db/settings';
 import { Skill, getSkill } from '@/db/skills';
@@ -57,7 +59,9 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     stop,
     retry,
     reload,
-    retrievedCount
+    retrievedCount,
+    retrievedSnippets,
+    warmingStages
   } = useConversation(conversationId);
   const listRef = useRef<FlatList>(null);
   const [activeModel, setActiveModel] = useState<string>('');
@@ -239,88 +243,73 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     ]);
   };
 
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
+  const [personasList, setPersonasList] = useState<Persona[]>([]);
+
   const onOverflowPress = () => {
     if (!conversation) return;
-    const actions: Array<{ label: string; run: () => void; destructive?: boolean }> = [
-      { label: 'Rename', run: promptRename },
-      { label: 'Edit system prompt', run: promptEditSystemPrompt },
-      ...(project
-        ? [{ label: 'Extract entities to project', run: () => void runExtractEntities() }]
-        : []),
-      { label: 'Export as Markdown', run: () => void exportMarkdown() },
-      { label: 'Clear history', run: confirmClearHistory, destructive: true },
-      { label: 'Delete conversation', run: confirmDeleteConversation, destructive: true }
-    ];
-
-    if (Platform.OS === 'ios') {
-      const labels = actions.map((a) => a.label);
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: conversation.title,
-          options: [...labels, 'Cancel'],
-          cancelButtonIndex: labels.length,
-          destructiveButtonIndex: actions
-            .map((a, i) => (a.destructive ? i : -1))
-            .filter((i) => i >= 0)
-        },
-        (idx) => {
-          const picked = actions[idx];
-          if (picked) picked.run();
-        }
-      );
-    } else {
-      Alert.alert(conversation.title, undefined, [
-        ...actions.map((a) => ({
-          text: a.label,
-          onPress: a.run,
-          ...(a.destructive ? { style: 'destructive' as const } : {})
-        })),
-        { text: 'Cancel', style: 'cancel' as const }
-      ]);
-    }
+    setOverflowOpen(true);
   };
+
+  const overflowActions: ActionSheetItem[] = conversation
+    ? [
+        { label: 'Rename', glyph: '✎', onPress: promptRename },
+        {
+          label: 'Edit system prompt',
+          glyph: '$',
+          onPress: promptEditSystemPrompt
+        },
+        ...(project
+          ? [
+              {
+                label: 'Extract entities to project',
+                glyph: '◇',
+                onPress: () => void runExtractEntities()
+              }
+            ]
+          : []),
+        { label: 'Export as Markdown', glyph: '↗', onPress: () => void exportMarkdown() },
+        {
+          label: 'Clear history',
+          kind: 'destructive' as const,
+          onPress: confirmClearHistory
+        },
+        {
+          label: 'Delete conversation',
+          kind: 'destructive' as const,
+          onPress: confirmDeleteConversation
+        }
+      ]
+    : [];
 
   const onPersonaPillPress = async () => {
-    const personas = await listPersonas();
-    if (personas.length === 0) return;
+    const list = await listPersonas();
+    if (list.length === 0) return;
+    setPersonasList(list);
+    setPersonaSheetOpen(true);
+  };
 
+  const personaActions: ActionSheetItem[] = (() => {
     const apply = async (p: Persona) => {
       await updateConversation(conversationId, { persona_id: p.id });
-      // Reload conversation state via the hook's reload
-      // (useConversation rerolls persona on next focus / send; nudge it now)
       router.replace(`/conversation/${conversationId}`);
     };
-
-    if (Platform.OS === 'ios') {
-      const labels = personas.map((p) => p.name);
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: 'Switch persona',
-          options: [...labels, 'Edit current', 'Cancel'],
-          cancelButtonIndex: labels.length + 1
-        },
-        (idx) => {
-          if (idx < labels.length) {
-            const picked = personas[idx];
-            if (picked) void apply(picked);
-          } else if (idx === labels.length && persona) {
-            router.push(`/persona/${persona.id}`);
-          }
-        }
-      );
-    } else {
-      Alert.alert('Switch persona', undefined, [
-        ...personas.map((p) => ({
-          text: p.name,
-          onPress: () => void apply(p)
-        })),
-        ...(persona
-          ? [{ text: 'Edit current', onPress: () => router.push(`/persona/${persona.id}`) }]
-          : []),
-        { text: 'Cancel', style: 'cancel' as const }
-      ]);
+    const items: ActionSheetItem[] = personasList.map((p) => ({
+      label: p.name,
+      glyph: p.id === persona?.id ? '●' : '◎',
+      kind: p.id === persona?.id ? ('warm' as const) : undefined,
+      onPress: () => void apply(p)
+    }));
+    if (persona) {
+      items.push({
+        label: 'Edit current persona',
+        glyph: '✎',
+        onPress: () => router.push(`/persona/${persona.id}`)
+      });
     }
-  };
+    return items;
+  })();
 
   useEffect(() => {
     void (async () => {
@@ -582,6 +571,20 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
             </Text>
           </View>
         }
+        ListFooterComponent={
+          <View style={{ gap: t.spacing.lg }}>
+            {warmingStages.length > 0 ? <WarmingLog stages={warmingStages} /> : null}
+            {retrievedSnippets.length > 0 && isWarming ? (
+              <RetrievalPeek
+                snippets={retrievedSnippets.map((s) => ({
+                  score: s.score,
+                  source: s.source,
+                  excerpt: s.excerpt
+                }))}
+              />
+            ) : null}
+          </View>
+        }
         onContentSizeChange={onListContentSizeChange}
         onScroll={onListScroll}
         scrollEventThrottle={64}
@@ -634,6 +637,20 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         proposals={proposals}
         onAccept={handleProposalAccept}
         onCancel={() => setProposalOpen(false)}
+      />
+      <ActionSheet
+        visible={overflowOpen}
+        onClose={() => setOverflowOpen(false)}
+        title={conversation ? `~/${(project?.name ?? 'inbox').toLowerCase()}` : ''}
+        subtitle={conversation?.title}
+        actions={overflowActions}
+      />
+      <ActionSheet
+        visible={personaSheetOpen}
+        onClose={() => setPersonaSheetOpen(false)}
+        title="~/personas"
+        subtitle="switch the active voice"
+        actions={personaActions}
       />
     </KeyboardAvoidingView>
   );

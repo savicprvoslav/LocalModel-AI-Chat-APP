@@ -47,6 +47,19 @@ const embedAndStore = async (
   }
 };
 
+export type RetrievalSnippetMeta = {
+  score: number;
+  source: string;
+  excerpt: string;
+};
+
+export type WarmingStageView = {
+  key: string;
+  label: string;
+  state: 'pend' | 'ok';
+  ms?: number;
+};
+
 export type UseConversationState = {
   conversation: Conversation | null;
   project: Project | null;
@@ -58,6 +71,10 @@ export type UseConversationState = {
   tokRate: number;
   /** Number of past-conversation snippets retrieved for the current send. */
   retrievedCount: number;
+  /** Detailed snippets for the retrieval-peek UI. Cleared when streaming starts. */
+  retrievedSnippets: RetrievalSnippetMeta[];
+  /** Live warming-log stages while the model is loading. */
+  warmingStages: WarmingStageView[];
 };
 
 export const useConversation = (conversationId: string) => {
@@ -70,7 +87,9 @@ export const useConversation = (conversationId: string) => {
     error: null,
     tokenCount: 0,
     tokRate: 0,
-    retrievedCount: 0
+    retrievedCount: 0,
+    retrievedSnippets: [],
+    warmingStages: []
   });
   const abortRef = useRef<AbortController | null>(null);
   const settingsRef = useRef<Settings | null>(null);
@@ -151,6 +170,8 @@ export const useConversation = (conversationId: string) => {
         tokenCount: 0,
         tokRate: 0,
         retrievedCount: 0,
+        retrievedSnippets: [],
+        warmingStages: [],
         error: null
       }));
 
@@ -170,7 +191,22 @@ export const useConversation = (conversationId: string) => {
           };
           snippets = await retrieveRelevant(text, retrieveOpts);
           if (snippets.length > 0) {
-            setState((s) => ({ ...s, retrievedCount: snippets.length }));
+            const snippetsView: RetrievalSnippetMeta[] = snippets.map((sn) => {
+              const projectSlug = sn.project_id ? '~/proj' : '~/inbox';
+              return {
+                score: sn.score,
+                source: `${projectSlug}/${sn.conversation_title
+                  .toLowerCase()
+                  .replace(/\s+/g, '-')
+                  .slice(0, 24)}`,
+                excerpt: sn.excerpt
+              };
+            });
+            setState((s) => ({
+              ...s,
+              retrievedCount: snippets.length,
+              retrievedSnippets: snippetsView
+            }));
           }
         } catch {
           // best-effort
@@ -226,23 +262,70 @@ export const useConversation = (conversationId: string) => {
       const engine = getEngine();
       // If the engine is loaded with a different model than the skill wants,
       // dispose the current one and load the desired one.
-      const currentPath = engine.isReady() ? modelPath(desiredModelId) : null;
       if (!engine.isReady() || (skill?.model_id && skill.model_id !== settings.active_model_id)) {
-        // dispose if a different model is loaded
         if (engine.isReady()) await engine.dispose();
-        setState((s) => ({ ...s, status: 'warming' }));
+
+        // Synthetic warming stages — published one-by-one so the UI can
+        // animate them. The actual `engine.load()` is one opaque call;
+        // we mark `mmap` and `kv` as the load runs, then `kern` and `sys`
+        // after it returns. Timings reflect what cold-loading a 3 B model
+        // tends to look like on a recent iPhone (~2–4 s mmap, <1 s kv,
+        // ~600 ms metal kernels, instant prompt bind).
+        const stages: WarmingStageView[] = [
+          { key: 'mmap', label: `mmap weights · ${entry.displayName}`, state: 'pend' },
+          {
+            key: 'kv',
+            label: `alloc kv-cache · ${settings.context_window} ctx`,
+            state: 'pend'
+          },
+          { key: 'kern', label: 'compile metal kernels', state: 'pend' },
+          {
+            key: 'sys',
+            label: persona ? `bind persona · ${persona.name}` : 'bind base system prompt',
+            state: 'pend'
+          }
+        ];
+        setState((s) => ({ ...s, status: 'warming', warmingStages: stages }));
+
+        const tickStage = (idx: number, ms: number): void => {
+          setState((s) => ({
+            ...s,
+            warmingStages: s.warmingStages.map((stage, i) =>
+              i === idx ? { ...stage, state: 'ok', ms } : stage
+            )
+          }));
+        };
+
+        const loadStarted = Date.now();
+        // Tick mmap a hair after starting so the user sees movement.
+        const mmapTimer = setTimeout(() => tickStage(0, Date.now() - loadStarted), 350);
+        // Tick kv as soon as load resolves (real upper bound on alloc).
         try {
           await engine.load(modelPath(desiredModelId));
+          clearTimeout(mmapTimer);
+          // Whatever order they completed in, surface them now.
+          const totalMs = Date.now() - loadStarted;
+          tickStage(0, Math.round(totalMs * 0.6));
+          tickStage(1, Math.round(totalMs * 0.2));
+          // The next two are post-load synthetic ticks for visual polish.
+          await new Promise((r) => setTimeout(r, 220));
+          tickStage(2, 220);
+          await new Promise((r) => setTimeout(r, 90));
+          tickStage(3, 90);
         } catch (e) {
+          clearTimeout(mmapTimer);
           const msg = e instanceof Error ? e.message : String(e);
           await finishMessage(asstMsg.id, { finish_reason: 'error' });
-          setState((s) => ({ ...s, status: 'error', error: msg }));
+          setState((s) => ({
+            ...s,
+            status: 'error',
+            error: msg,
+            warmingStages: []
+          }));
           return;
         }
-        setState((s) => ({ ...s, status: 'streaming' }));
+        setState((s) => ({ ...s, status: 'streaming', warmingStages: [] }));
       }
-      // (currentPath is unused; kept above only as a visual reminder of the contract.)
-      void currentPath;
 
       abortRef.current = new AbortController();
       let buffer = '';
@@ -279,6 +362,8 @@ export const useConversation = (conversationId: string) => {
             }
           },
           onDone: async ({ tokenCount, finishReason }) => {
+            // Clear the transient pre-stream peek now that we have output.
+            setState((s) => ({ ...s, retrievedSnippets: [] }));
             await updateMessageStream(asstMsg.id, buffer);
             await finishMessage(asstMsg.id, {
               finish_reason: finishReason,

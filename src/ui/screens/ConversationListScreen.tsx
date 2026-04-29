@@ -16,6 +16,7 @@ import {
 import { listMessages } from '@/db/messages';
 import { Skill, listSkills } from '@/db/skills';
 import { PromptModal } from '../components/PromptModal';
+import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
 
 type Row =
   | { type: 'project-header'; project: Project; count: number }
@@ -37,6 +38,8 @@ export const ConversationListScreen = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [convCount, setConvCount] = useState(0);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
+  const [sheetTarget, setSheetTarget] = useState<Conversation | null>(null);
+  const [moveTarget, setMoveTarget] = useState<Conversation | null>(null);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
@@ -138,39 +141,50 @@ export const ConversationListScreen = () => {
     ]);
   };
 
-  const promptMoveToProject = (c: Conversation) => {
-    const options: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'cancel' | 'destructive';
-    }> = [
-      {
-        text: 'Inbox (no project)',
-        onPress: async () => {
-          await updateConversation(c.id, { project_id: null });
-          await reload();
-        }
-      },
-      ...projects.map((p) => ({
-        text: p.name,
-        onPress: async () => {
-          await updateConversation(c.id, { project_id: p.id });
-          await reload();
-        }
-      })),
-      { text: 'Cancel', style: 'cancel' as const }
-    ];
-    Alert.alert('Move to project', undefined, options);
-  };
+  const onLongPress = (c: Conversation) => setSheetTarget(c);
 
-  const onLongPress = (c: Conversation) => {
-    Alert.alert(c.title, undefined, [
-      { text: 'Rename', onPress: () => promptRename(c) },
-      { text: 'Move to project', onPress: () => promptMoveToProject(c) },
-      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(c) },
-      { text: 'Cancel', style: 'cancel' }
-    ]);
-  };
+  const sheetActions: ActionSheetItem[] = sheetTarget
+    ? [
+        {
+          label: 'Rename',
+          glyph: '✎',
+          onPress: () => promptRename(sheetTarget)
+        },
+        {
+          label: 'Move to project',
+          glyph: '↦',
+          onPress: () => setMoveTarget(sheetTarget)
+        },
+        {
+          label: 'Delete conversation',
+          kind: 'destructive',
+          onPress: () => confirmDelete(sheetTarget)
+        }
+      ]
+    : [];
+
+  const moveActions: ActionSheetItem[] = moveTarget
+    ? [
+        {
+          label: 'Inbox (no project)',
+          glyph: '~',
+          onPress: async () => {
+            await updateConversation(moveTarget.id, { project_id: null });
+            await reload();
+          }
+        },
+        ...projects.map(
+          (p): ActionSheetItem => ({
+            label: p.name,
+            glyph: '/',
+            onPress: async () => {
+              await updateConversation(moveTarget.id, { project_id: p.id });
+              await reload();
+            }
+          })
+        )
+      ]
+    : [];
 
   // Header actions: + NEW THREAD button + search + settings glyphs.
   const headerActions = (
@@ -439,6 +453,20 @@ export const ConversationListScreen = () => {
         initialValue={renameTarget?.title ?? ''}
         onSubmit={handleRenameSubmit}
         onCancel={() => setRenameTarget(null)}
+      />
+      <ActionSheet
+        visible={sheetTarget !== null}
+        onClose={() => setSheetTarget(null)}
+        title={sheetTarget ? `~/${sheetTarget.title.toLowerCase().replace(/\s+/g, '-').slice(0, 28)}` : ''}
+        subtitle={sheetTarget?.title}
+        actions={sheetActions}
+      />
+      <ActionSheet
+        visible={moveTarget !== null}
+        onClose={() => setMoveTarget(null)}
+        title="move to project"
+        subtitle={moveTarget?.title}
+        actions={moveActions}
       />
     </View>
   );

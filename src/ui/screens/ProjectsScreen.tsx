@@ -1,12 +1,15 @@
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, FlatList } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { PromptModal } from '../components/PromptModal';
 import { Project, listProjects, createProject } from '@/db/projects';
 import { listConversationsByProject } from '@/db/conversations';
 import { listEntities } from '@/db/projectEntities';
+import { PromptModal } from '../components/PromptModal';
+import { Numeral } from '../components/Numeral';
+import { SectionHeader } from '../components/SectionHeader';
+import { AsciiBlock } from '../components/AsciiBlock';
 
 type Row = {
   project: Project;
@@ -16,6 +19,7 @@ type Row = {
 
 export const ProjectsScreen = () => {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Row[]>([]);
   const [newOpen, setNewOpen] = useState(false);
 
@@ -46,97 +50,158 @@ export const ProjectsScreen = () => {
     router.push(`/project/${p.id}`);
   };
 
+  const empty = (
+    <View
+      style={{
+        paddingVertical: 64,
+        paddingHorizontal: t.spacing.xl,
+        alignItems: 'center',
+        gap: t.spacing.lg
+      }}
+    >
+      <AsciiBlock>{`  ┌──────────────────┐
+  │  no projects.    │
+  │  group convos    │
+  │  with shared     │
+  │  context here.   │
+  └──────────────────┘`}</AsciiBlock>
+      <Text
+        style={{
+          ...t.type.bodyAi,
+          color: t.colors.text.secondary,
+          textAlign: 'center',
+          fontSize: 14
+        }}
+      >
+        A project pins notes and entities (people, products, places) so every conversation
+        in it inherits that context.
+      </Text>
+      <Pressable onPress={() => setNewOpen(true)}>
+        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW PROJECT</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
-      <ScreenHeader
-        left={
-          <Pressable onPress={() => router.back()}>
-            <Text style={{ ...t.type.heading, color: t.colors.text.primary }}>←</Text>
-          </Pressable>
-        }
-        title="projects"
-        right={
-          <Pressable onPress={() => setNewOpen(true)}>
-            <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW</Text>
-          </Pressable>
-        }
-      />
-      {rows.length === 0 ? (
-        <View
+      <View
+        style={{
+          paddingTop: insets.top + t.spacing.md,
+          paddingHorizontal: t.spacing.xl,
+          paddingBottom: t.spacing.lg,
+          borderBottomWidth: 1,
+          borderBottomColor: t.colors.border.subtle,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: t.spacing.md
+        }}
+      >
+        <Pressable
+          onPress={() => router.back()}
           style={{
-            flex: 1,
+            width: 32,
+            height: 32,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm,
             alignItems: 'center',
-            justifyContent: 'center',
-            padding: t.spacing.xl,
-            gap: t.spacing.md
+            justifyContent: 'center'
           }}
         >
-          <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
-            ~/no projects yet
+          <Text style={{ fontFamily: t.fonts.mono, fontSize: 14 }}>←</Text>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={{ ...t.type.meta, color: t.colors.accent.warm }}>~/projects</Text>
+          <Text style={{ ...t.type.displaySerifLg, color: t.colors.text.primary }}>
+            projects
           </Text>
-          <Text
-            style={{
-              ...t.type.bodyAi,
-              color: t.colors.text.secondary,
-              textAlign: 'center',
-              fontSize: 14
-            }}
-          >
-            Group related conversations under a project. Add notes and entities to give the
-            assistant shared context across every conversation in it.
-          </Text>
-          <Pressable onPress={() => setNewOpen(true)} style={{ marginTop: t.spacing.md }}>
-            <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW PROJECT</Text>
-          </Pressable>
         </View>
+        <Pressable
+          onPress={() => setNewOpen(true)}
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm
+          }}
+        >
+          <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW</Text>
+        </Pressable>
+      </View>
+
+      {rows.length === 0 ? (
+        empty
       ) : (
         <FlatList
           data={rows}
           keyExtractor={(r) => r.project.id}
-          contentContainerStyle={{ paddingBottom: t.spacing.xxl }}
-          renderItem={({ item }) => (
+          ListHeaderComponent={
+            <View style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.lg }}>
+              <SectionHeader
+                label="contexts"
+                comment={`${rows.length} ${rows.length === 1 ? 'project' : 'projects'}`}
+              />
+            </View>
+          }
+          contentContainerStyle={{ paddingBottom: insets.bottom + t.spacing.xl }}
+          renderItem={({ item, index }) => (
             <Pressable
               onPress={() => router.push(`/project/${item.project.id}`)}
               style={{
-                paddingHorizontal: t.spacing.lg,
-                paddingVertical: t.spacing.md,
-                borderBottomWidth: 1,
-                borderBottomColor: t.colors.border.subtle
+                flexDirection: 'row',
+                gap: 14,
+                marginHorizontal: t.spacing.xl,
+                marginBottom: t.spacing.sm + 2,
+                padding: t.spacing.lg,
+                borderWidth: 1,
+                borderColor: t.colors.border.default,
+                borderRadius: t.radii.md
               }}
             >
-              <Text
-                style={{
-                  ...t.type.label,
-                  color: t.colors.text.tertiary,
-                  marginBottom: t.spacing.xs
-                }}
-              >
-                ~/{item.project.name.toUpperCase()}
-              </Text>
-              <Text
-                style={{
-                  ...t.type.bodyAi,
-                  color: t.colors.text.secondary,
-                  fontSize: 14
-                }}
-                numberOfLines={2}
-              >
-                {item.project.notes.trim() || 'no notes yet'}
-              </Text>
-              <Text
-                style={{
-                  ...t.type.meta,
-                  color: t.colors.text.quiet,
-                  marginTop: t.spacing.xs
-                }}
-              >
-                {item.conversationCount} conv · {item.entityCount} entit
-                {item.entityCount === 1 ? 'y' : 'ies'}
-              </Text>
+              <View style={{ width: 44 }}>
+                <Numeral>{index + 1}</Numeral>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+                  {`~/${item.project.name.toUpperCase()}`}
+                </Text>
+                <Text
+                  style={{
+                    ...t.type.displaySerif,
+                    color: t.colors.text.primary,
+                    marginTop: 4,
+                    marginBottom: 6
+                  }}
+                >
+                  {item.project.name}
+                </Text>
+                <Text
+                  style={{
+                    ...t.type.bodyAi,
+                    color: t.colors.text.secondary,
+                    fontSize: 14,
+                    lineHeight: 21
+                  }}
+                  numberOfLines={2}
+                >
+                  {item.project.notes.trim() || 'no notes yet — add some context for the model.'}
+                </Text>
+                <Text
+                  style={{
+                    ...t.type.metaV2,
+                    color: t.colors.text.quiet,
+                    marginTop: t.spacing.sm
+                  }}
+                >
+                  {`${item.conversationCount} conv · ${item.entityCount} entit${item.entityCount === 1 ? 'y' : 'ies'}`}
+                </Text>
+              </View>
             </Pressable>
           )}
         />
       )}
+
       <PromptModal
         visible={newOpen}
         title="New project"
