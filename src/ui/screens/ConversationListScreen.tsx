@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { EditorialHeader } from '../components/EditorialHeader';
 import { AsciiRule } from '../components/AsciiRule';
 import { AsciiBlock } from '../components/AsciiBlock';
 import { Project, listProjects } from '@/db/projects';
@@ -34,6 +34,7 @@ const formatRelative = (ts: number): string => {
 
 export const ConversationListScreen = () => {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Row[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -188,28 +189,28 @@ export const ConversationListScreen = () => {
       ]
     : [];
 
-  // Header actions: + NEW THREAD + ⌕ search. (Settings + projects nav now live in the SideMenu.)
-  const headerActions = (
-    <View style={{ flexDirection: 'row', gap: t.spacing.sm }}>
+  // Single-row compact header: ☰ menu · "conversations · N" · [+] [⌕].
+  // Replaces the earlier 4-row editorial header (eyebrow + serif title +
+  // italic subtitle + actions row) which felt heavy on the home screen.
+  const compactHeader = (
+    <View
+      style={{
+        paddingTop: insets.top + t.spacing.sm,
+        paddingHorizontal: t.spacing.lg,
+        paddingBottom: t.spacing.sm + 2,
+        borderBottomWidth: 1,
+        borderBottomColor: t.colors.border.subtle,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: t.spacing.sm
+      }}
+    >
       <Pressable
-        onPress={newConversation}
+        onPress={() => setMenuOpen(true)}
+        hitSlop={8}
         style={{
-          flex: 1,
-          paddingVertical: 10,
-          paddingHorizontal: 14,
-          backgroundColor: t.colors.accent.inverse,
-          borderRadius: t.radii.sm,
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Text style={{ ...t.type.label, color: t.colors.bg.canvas }}>+ NEW THREAD</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => router.push('/search')}
-        style={{
-          width: 44,
-          height: 38,
+          width: 32,
+          height: 32,
           borderWidth: 1,
           borderColor: t.colors.border.default,
           borderRadius: t.radii.sm,
@@ -217,30 +218,73 @@ export const ConversationListScreen = () => {
           justifyContent: 'center'
         }}
       >
-        <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⌕</Text>
+        <Text style={{ fontFamily: t.fonts.mono, fontSize: 14, color: t.colors.text.primary }}>
+          ☰
+        </Text>
+      </Pressable>
+
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'baseline',
+          gap: t.spacing.sm
+        }}
+      >
+        <Text
+          style={{
+            ...t.type.displaySerifLg,
+            fontSize: 22,
+            color: t.colors.text.primary
+          }}
+          numberOfLines={1}
+        >
+          conversations
+        </Text>
+        <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+          {`· ${convCount}`}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={newConversation}
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: t.radii.sm,
+          backgroundColor: t.colors.accent.inverse,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text
+          style={{
+            fontFamily: t.fonts.monoBold,
+            fontSize: 16,
+            color: t.colors.bg.canvas,
+            lineHeight: 16
+          }}
+        >
+          +
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/search')}
+        style={{
+          width: 32,
+          height: 32,
+          borderWidth: 1,
+          borderColor: t.colors.border.default,
+          borderRadius: t.radii.sm,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ fontFamily: t.fonts.mono, fontSize: 14, color: t.colors.text.tertiary }}>
+          ⌕
+        </Text>
       </Pressable>
     </View>
-  );
-
-  // ☰ leading element opens the SideMenu. Sits on the far left of the eyebrow row.
-  const leadingMenu = (
-    <Pressable
-      onPress={() => setMenuOpen(true)}
-      hitSlop={8}
-      style={{
-        width: 32,
-        height: 32,
-        borderWidth: 1,
-        borderColor: t.colors.border.default,
-        borderRadius: t.radii.sm,
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Text style={{ fontFamily: t.fonts.mono, fontSize: 14, color: t.colors.text.primary }}>
-        ☰
-      </Text>
-    </Pressable>
   );
 
   const empty = (
@@ -266,14 +310,7 @@ export const ConversationListScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
-      <EditorialHeader
-        leading={leadingMenu}
-        eyebrow={`LOCAL · ONLINE · ${convCount} ${convCount === 1 ? 'CHAT' : 'CHATS'}`}
-        pulse
-        title="conversations"
-        subtitle="private threads, persisted to disk."
-        actions={headerActions}
-      />
+      {compactHeader}
 
       {rows.length === 0 && skills.length === 0 ? (
         empty
