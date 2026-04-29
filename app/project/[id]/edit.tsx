@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { ProjectDetailScreen } from '@/ui/screens/ProjectDetailScreen';
 
-export default function Project() {
+export default function ProjectEdit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   if (!id) return null;
   return <ProjectDetailScreen projectId={id} />;

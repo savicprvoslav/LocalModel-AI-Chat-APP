@@ -5,11 +5,6 @@ import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Project, getProject, updateProject, deleteProject } from '@/db/projects';
 import {
-  Conversation,
-  listConversationsByProject,
-  createConversation
-} from '@/db/conversations';
-import {
   ProjectEntity,
   listEntities,
   createEntity,
@@ -24,7 +19,6 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [entities, setEntities] = useState<ProjectEntity[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entityTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -41,7 +35,6 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
         setName(p.name);
         setNotes(p.notes);
       }
-      setConversations(await listConversationsByProject(projectId));
       await reloadEntities();
     })();
   }, [projectId]);
@@ -60,14 +53,6 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
   const onChangeNotes = (v: string) => {
     setNotes(v);
     queueSave({ notes: v });
-  };
-
-  const newInProject = async () => {
-    const c = await createConversation({
-      title: 'New conversation',
-      project_id: projectId
-    });
-    router.push(`/conversation/${c.id}`);
   };
 
   const confirmDelete = () => {
@@ -136,6 +121,7 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
             <Text style={{ ...t.type.heading, color: t.colors.text.primary }}>←</Text>
           </Pressable>
         }
+        title={`${project.name} · settings`}
         right={
           <Pressable onPress={confirmDelete}>
             <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>DELETE</Text>
@@ -280,33 +266,20 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
           ))}
         </View>
 
-        <View style={{ marginTop: t.spacing.xl }}>
-          <Text
-            style={{
-              ...t.type.label,
-              color: t.colors.text.tertiary,
-              marginBottom: t.spacing.sm
-            }}
-          >
-            CONVERSATIONS
+        {/* Footer link back to threads — conversations list now lives on the
+            threads view (`/project/[id]`). This screen is settings-only. */}
+        <Pressable
+          onPress={() => router.replace(`/project/${projectId}`)}
+          style={{
+            marginTop: t.spacing.xl,
+            paddingVertical: t.spacing.md,
+            alignItems: 'center'
+          }}
+        >
+          <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+            ← BACK TO {project.name.toUpperCase()} THREADS
           </Text>
-          {conversations.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => router.push(`/conversation/${c.id}`)}
-              style={{ paddingVertical: t.spacing.sm }}
-            >
-              <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>
-                {c.title}
-              </Text>
-            </Pressable>
-          ))}
-          <Pressable onPress={newInProject} style={{ marginTop: t.spacing.sm }}>
-            <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
-              + NEW CONVERSATION IN PROJECT
-            </Text>
-          </Pressable>
-        </View>
+        </Pressable>
       </View>
     </ScrollView>
   );
