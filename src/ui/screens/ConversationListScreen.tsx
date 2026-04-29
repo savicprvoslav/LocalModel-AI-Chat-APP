@@ -17,6 +17,7 @@ import { listMessages } from '@/db/messages';
 import { Skill, listSkills } from '@/db/skills';
 import { PromptModal } from '../components/PromptModal';
 import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
+import { SideMenu } from '../components/SideMenu';
 
 type Row =
   | { type: 'project-header'; project: Project; count: number }
@@ -40,6 +41,7 @@ export const ConversationListScreen = () => {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [sheetTarget, setSheetTarget] = useState<Conversation | null>(null);
   const [moveTarget, setMoveTarget] = useState<Conversation | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
@@ -186,7 +188,7 @@ export const ConversationListScreen = () => {
       ]
     : [];
 
-  // Header actions: + NEW THREAD button + search + settings glyphs.
+  // Header actions: + NEW THREAD + ⌕ search. (Settings + projects nav now live in the SideMenu.)
   const headerActions = (
     <View style={{ flexDirection: 'row', gap: t.spacing.sm }}>
       <Pressable
@@ -217,21 +219,28 @@ export const ConversationListScreen = () => {
       >
         <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⌕</Text>
       </Pressable>
-      <Pressable
-        onPress={() => router.push('/settings')}
-        style={{
-          width: 44,
-          height: 38,
-          borderWidth: 1,
-          borderColor: t.colors.border.default,
-          borderRadius: t.radii.sm,
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⚙</Text>
-      </Pressable>
     </View>
+  );
+
+  // ☰ leading element opens the SideMenu. Sits on the far left of the eyebrow row.
+  const leadingMenu = (
+    <Pressable
+      onPress={() => setMenuOpen(true)}
+      hitSlop={8}
+      style={{
+        width: 32,
+        height: 32,
+        borderWidth: 1,
+        borderColor: t.colors.border.default,
+        borderRadius: t.radii.sm,
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <Text style={{ fontFamily: t.fonts.mono, fontSize: 14, color: t.colors.text.primary }}>
+        ☰
+      </Text>
+    </Pressable>
   );
 
   const empty = (
@@ -258,6 +267,7 @@ export const ConversationListScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
       <EditorialHeader
+        leading={leadingMenu}
         eyebrow={`LOCAL · ONLINE · ${convCount} ${convCount === 1 ? 'CHAT' : 'CHATS'}`}
         pulse
         title="conversations"
@@ -467,6 +477,11 @@ export const ConversationListScreen = () => {
         title="move to project"
         subtitle={moveTarget?.title}
         actions={moveActions}
+      />
+      <SideMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNewThread={newConversation}
       />
     </View>
   );
