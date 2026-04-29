@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { ModelCard } from '../components/ModelCard';
 import { CATALOG } from '@/model/catalog';
 import {
   modelExists,
@@ -14,7 +13,6 @@ import {
 import { downloadModel } from '@/model/download';
 import { getAllSettings, setSetting, Settings } from '@/db/settings';
 import { getEngine } from '@/engine';
-import { StepSlider } from '../components/StepSlider';
 import { useThemePref } from '../theme/ThemeProvider';
 import type { Theme as ThemePref } from '@/db/settings';
 import {
@@ -23,11 +21,18 @@ import {
   upsertEmbedding
 } from '@/db/embeddings';
 import { hashEmbed, HASH_EMBEDDER_NAME } from '@/chat/vectors';
+import { SectionHeader } from '../components/SectionHeader';
+import { BigSlider } from '../components/BigSlider';
+import { Bar, Ticks } from '../components/Bar';
+import { Numeral } from '../components/Numeral';
+import { AsciiBlock } from '../components/AsciiBlock';
+import { AsciiRule } from '../components/AsciiRule';
 
-const fmtGB = (b: number) => `${(b / 1_000_000_000).toFixed(2)} GB`;
+const fmtGB1 = (b: number) => `${(b / 1_000_000_000).toFixed(1)}`;
 
 export const SettingsScreen = () => {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const { pref: themePref, setPref: setThemePref } = useThemePref();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
@@ -62,10 +67,7 @@ export const SettingsScreen = () => {
   const runReindex = async () => {
     setReindexing(true);
     try {
-      // Process in chunks of 200 messages so the UI stays responsive on
-      // larger histories. Each chunk: pull unembedded ids, embed, upsert.
       let totalDone = 0;
-      // Disposable inner loop until no more unembedded messages remain.
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const batch = await listUnembeddedMessageIds(200);
@@ -131,136 +133,211 @@ export const SettingsScreen = () => {
 
   if (!settings) return null;
 
-  return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
-      <ScreenHeader
-        left={
-          <Pressable onPress={() => router.back()}>
-            <Text style={{ ...t.type.heading, color: t.colors.text.primary }}>←</Text>
-          </Pressable>
-        }
-        title="settings"
-      />
-      <View style={{ padding: t.spacing.lg }}>
-        <Text
-          style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginBottom: t.spacing.sm
-          }}
-        >
-          MODELS
-        </Text>
-        <Text
-          style={{
-            ...t.type.meta,
-            color: t.colors.text.tertiary,
-            marginBottom: t.spacing.md
-          }}
-        >
-          using {fmtGB(used)} · {fmtGB(free)} free
-        </Text>
+  // Storage budget — installed models / total free + used (an approximation;
+  // free disk is what FS reports right now, and `used` is models on disk).
+  const totalBudget = used + free;
+  const usedFraction = totalBudget > 0 ? used / totalBudget : 0;
 
-        {CATALOG.map((e) => {
+  // ---- Section: behavior toggle row helper ------------------------------
+  const ToggleRow = ({
+    label,
+    hint,
+    value,
+    onToggle
+  }: {
+    label: string;
+    hint: string;
+    value: boolean;
+    onToggle: () => void;
+  }) => (
+    <Pressable
+      onPress={onToggle}
+      style={{
+        marginTop: t.spacing.sm,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: t.colors.border.subtle,
+        borderRadius: t.radii.sm
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 6
+        }}
+      >
+        <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>{label}</Text>
+        <View
+          style={{
+            width: 44,
+            height: 26,
+            borderRadius: 13,
+            borderWidth: 1,
+            borderColor: value ? t.colors.accent.warm : t.colors.border.default,
+            backgroundColor: value ? t.colors.accent.warm : 'transparent',
+            padding: 2,
+            justifyContent: 'center'
+          }}
+        >
+          <View
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: value ? t.colors.bg.canvas : t.colors.text.tertiary,
+              marginLeft: value ? 18 : 0
+            }}
+          />
+        </View>
+      </View>
+      <Text style={{ ...t.type.meta, color: t.colors.text.quiet }}>{hint}</Text>
+    </Pressable>
+  );
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + t.spacing.xl }}
+    >
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: insets.top + t.spacing.md,
+          paddingHorizontal: t.spacing.xl,
+          paddingBottom: t.spacing.lg,
+          borderBottomWidth: 1,
+          borderBottomColor: t.colors.border.subtle,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: t.spacing.md
+        }}
+      >
+        <Pressable
+          onPress={() => router.back()}
+          style={{
+            width: 32,
+            height: 32,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Text style={{ fontFamily: t.fonts.mono, fontSize: 14 }}>←</Text>
+        </Pressable>
+        <Text style={{ ...t.type.displaySerifLg, color: t.colors.text.primary }}>settings</Text>
+      </View>
+
+      <View style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.lg }}>
+        {/* MODELS */}
+        <SectionHeader
+          label="models"
+          comment={`${Object.values(installed).filter(Boolean).length} installed · ${fmtGB1(used)} / ${fmtGB1(totalBudget)} GB`}
+        />
+        <View style={{ marginBottom: 4 }}>
+          <Bar fraction={usedFraction} />
+        </View>
+        <Ticks
+          labels={[
+            '0',
+            `${Math.round(totalBudget / 3 / 1_000_000_000)}`,
+            `${Math.round((totalBudget * 2) / 3 / 1_000_000_000)}`,
+            `${Math.round(totalBudget / 1_000_000_000)} GB`
+          ]}
+        />
+        <View style={{ height: t.spacing.md }} />
+
+        {CATALOG.map((e, i) => {
           const isInstalled = !!installed[e.id];
           const isActive = settings.active_model_id === e.id;
           return (
-            <View key={e.id}>
-              <ModelCard entry={e} installed={isInstalled} active={isActive} />
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: t.spacing.md,
-                  marginBottom: t.spacing.lg,
-                  marginTop: -t.spacing.xs
-                }}
-              >
-                {!isInstalled ? (
-                  <Pressable
-                    onPress={() => startDownload(e.id)}
-                    disabled={downloading !== null}
-                  >
-                    <Text
-                      style={{
-                        ...t.type.label,
-                        color:
-                          downloading === e.id
-                            ? t.colors.text.tertiary
-                            : t.colors.text.primary
-                      }}
-                    >
-                      {downloading === e.id ? 'DOWNLOADING…' : 'DOWNLOAD'}
+            <View
+              key={e.id}
+              style={{
+                flexDirection: 'row',
+                gap: 14,
+                padding: t.spacing.lg,
+                borderWidth: 1,
+                borderColor: isActive ? t.colors.text.primary : t.colors.border.default,
+                backgroundColor: isActive ? t.colors.bg.subtle : 'transparent',
+                borderRadius: t.radii.md,
+                marginBottom: t.spacing.sm + 2
+              }}
+            >
+              <View style={{ width: 44 }}>
+                <Numeral active={isActive}>{i + 1}</Numeral>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: 4
+                  }}
+                >
+                  <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+                    {e.tier.toUpperCase()}
+                  </Text>
+                  {isActive ? (
+                    <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>● ACTIVE</Text>
+                  ) : isInstalled ? (
+                    <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+                      INSTALLED
                     </Text>
-                  </Pressable>
-                ) : isActive ? (
-                  <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>● ACTIVE</Text>
-                ) : (
-                  <>
-                    <Pressable onPress={() => setActive(e.id)}>
+                  ) : (
+                    <Text style={{ ...t.type.label, color: t.colors.text.quiet }}>
+                      NOT INSTALLED
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  style={{
+                    ...t.type.displaySerif,
+                    color: t.colors.text.primary,
+                    marginBottom: t.spacing.sm
+                  }}
+                >
+                  {e.displayName}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: t.spacing.lg }}>
+                  {!isInstalled ? (
+                    <Pressable
+                      onPress={() => startDownload(e.id)}
+                      disabled={downloading !== null}
+                    >
                       <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
-                        SET ACTIVE
+                        {downloading === e.id ? '▸ DOWNLOADING…' : '↓ DOWNLOAD'}
                       </Text>
                     </Pressable>
-                    <Pressable onPress={() => confirmDelete(e.id)}>
-                      <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>
-                        DELETE
-                      </Text>
-                    </Pressable>
-                  </>
-                )}
+                  ) : isActive ? null : (
+                    <>
+                      <Pressable onPress={() => setActive(e.id)}>
+                        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+                          SET ACTIVE
+                        </Text>
+                      </Pressable>
+                      <Pressable onPress={() => confirmDelete(e.id)}>
+                        <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>
+                          DELETE
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
               </View>
             </View>
           );
         })}
 
-        <Text
-          style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.xl,
-            marginBottom: t.spacing.sm
-          }}
-        >
-          BEHAVIOR
-        </Text>
-        <Pressable
-          onPress={() => router.push('/personas')}
-          style={{
-            paddingVertical: t.spacing.sm,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>Personas</Text>
-          <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/skills')}
-          style={{
-            paddingVertical: t.spacing.sm,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>Skills</Text>
-          <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
-        </Pressable>
-
-        <Text
-          style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.xl,
-            marginBottom: t.spacing.md
-          }}
-        >
-          GENERATION
-        </Text>
-        <StepSlider
+        {/* GENERATION */}
+        <SectionHeader label="generation" comment="sampling · output · context" topPad />
+        <BigSlider
           label="TEMPERATURE"
-          hint="Sampling randomness. 0 = deterministic, 1 = balanced, 2 = wild. Personas can override per-conversation."
+          hint="Sampling randomness · 0 deterministic, 2 wild."
           value={settings.temperature}
           min={0}
           max={2}
@@ -272,206 +349,141 @@ export const SettingsScreen = () => {
             void setSetting('temperature', rounded);
           }}
         />
-        <StepSlider
-          label="MAX RESPONSE TOKENS"
-          hint="Reserved for the model's reply. Larger = longer answers but smaller context for history."
+        <BigSlider
+          label="MAX TOKENS"
+          hint="Reserved for the reply."
           value={settings.max_tokens}
           min={128}
           max={2048}
           step={128}
+          unit="tok"
           onChange={(v) => {
             setSettings({ ...settings, max_tokens: v });
             void setSetting('max_tokens', v);
           }}
         />
-        <StepSlider
+        <BigSlider
           label="CONTEXT WINDOW"
-          hint="Total tokens the model can see. Bigger uses more memory; below ~2k may truncate history aggressively."
+          hint="Total tokens the model can see."
           value={settings.context_window}
           min={2048}
           max={8192}
           step={1024}
+          unit="tok"
           onChange={(v) => {
             setSettings({ ...settings, context_window: v });
             void setSetting('context_window', v);
           }}
         />
 
-        <Pressable
-          onPress={() => {
+        <ToggleRow
+          label="PRE-WARM ON LAUNCH"
+          hint="Load the active model on app boot so the first message has no warmup wait. Costs RAM continuously."
+          value={settings.prewarm_on_launch}
+          onToggle={() => {
             const next = !settings.prewarm_on_launch;
             setSettings({ ...settings, prewarm_on_launch: next });
             void setSetting('prewarm_on_launch', next);
           }}
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingVertical: t.spacing.md,
-            marginTop: t.spacing.sm
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: t.spacing.md }}>
-            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
-              PRE-WARM ON LAUNCH
-            </Text>
-            <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
-              Load the active model on app boot so the first message has no warmup wait.
-              Costs RAM continuously.
-            </Text>
-          </View>
-          <View
-            style={{
-              width: 44,
-              height: 26,
-              borderRadius: 13,
-              borderWidth: 1,
-              borderColor: settings.prewarm_on_launch
-                ? t.colors.accent.warm
-                : t.colors.border.default,
-              backgroundColor: settings.prewarm_on_launch
-                ? t.colors.accent.warm
-                : 'transparent',
-              padding: 2,
-              justifyContent: 'center'
-            }}
-          >
-            <View
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: settings.prewarm_on_launch
-                  ? t.colors.bg.canvas
-                  : t.colors.text.tertiary,
-                marginLeft: settings.prewarm_on_launch ? 18 : 0
-              }}
-            />
-          </View>
-        </Pressable>
+        />
 
-        <Text
+        {/* BEHAVIOR */}
+        <SectionHeader label="behavior" comment="personas · skills · retrieval" topPad />
+        <Pressable
+          onPress={() => router.push('/personas')}
           style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.xl,
+            paddingVertical: t.spacing.md,
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: t.colors.border.subtle,
+            borderRadius: t.radii.sm,
             marginBottom: t.spacing.sm
           }}
         >
-          RETRIEVAL
-        </Text>
-        <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginBottom: t.spacing.sm }}>
-          Pull relevant snippets from past conversations into each prompt. Hybrid keyword
-          (FTS) + feature-vector retrieval, fully on-device. Honest note: this is lexical, not
-          semantic — paraphrase-only queries won't always retrieve.
-        </Text>
-
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <View>
+              <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.primary }}>Personas</Text>
+              <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
+                System prompts you can toggle per chat.
+              </Text>
+            </View>
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
+          </View>
+        </Pressable>
         <Pressable
-          onPress={() => {
+          onPress={() => router.push('/skills')}
+          style={{
+            paddingVertical: t.spacing.md,
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: t.colors.border.subtle,
+            borderRadius: t.radii.sm
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <View>
+              <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.primary }}>Skills</Text>
+              <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
+                Slash commands like /eli5 and /summarize.
+              </Text>
+            </View>
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
+          </View>
+        </Pressable>
+
+        <ToggleRow
+          label="ENABLE RETRIEVAL"
+          hint="Pull snippets from past chats. Lexical only — paraphrases may miss."
+          value={settings.retrieval_enabled}
+          onToggle={() => {
             const next = !settings.retrieval_enabled;
             setSettings({ ...settings, retrieval_enabled: next });
             void setSetting('retrieval_enabled', next);
           }}
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingVertical: t.spacing.md
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: t.spacing.md }}>
-            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
-              ENABLE RETRIEVAL
-            </Text>
-            <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
-              Adds a `RELEVANT FROM PAST` block to each prompt when matches are found.
-            </Text>
-          </View>
-          <View
-            style={{
-              width: 44,
-              height: 26,
-              borderRadius: 13,
-              borderWidth: 1,
-              borderColor: settings.retrieval_enabled
-                ? t.colors.accent.warm
-                : t.colors.border.default,
-              backgroundColor: settings.retrieval_enabled
-                ? t.colors.accent.warm
-                : 'transparent',
-              padding: 2,
-              justifyContent: 'center'
-            }}
-          >
-            <View
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: settings.retrieval_enabled
-                  ? t.colors.bg.canvas
-                  : t.colors.text.tertiary,
-                marginLeft: settings.retrieval_enabled ? 18 : 0
-              }}
-            />
-          </View>
-        </Pressable>
-
-        <StepSlider
-          label="MAX SNIPPETS"
-          hint="How many snippets to inject. Higher = more context, more tokens consumed."
-          value={settings.retrieval_k}
-          min={1}
-          max={8}
-          step={1}
-          onChange={(v) => {
-            setSettings({ ...settings, retrieval_k: v });
-            void setSetting('retrieval_k', v);
-          }}
         />
 
-        <Text
-          style={{
-            ...t.type.meta,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.sm
-          }}
-        >
-          INDEX COVERAGE: {coverage.embedded} / {coverage.total} messages
+        <View style={{ marginTop: t.spacing.md }}>
+          <BigSlider
+            label="MAX SNIPPETS"
+            hint="How many snippets to inject when retrieval finds matches."
+            value={settings.retrieval_k}
+            min={1}
+            max={8}
+            step={1}
+            onChange={(v) => {
+              setSettings({ ...settings, retrieval_k: v });
+              void setSetting('retrieval_k', v);
+            }}
+          />
+        </View>
+        <Text style={{ ...t.type.meta, color: t.colors.text.tertiary, marginTop: 4 }}>
+          {`INDEX COVERAGE: ${coverage.embedded} / ${coverage.total} messages`}
         </Text>
         <Pressable
           onPress={runReindex}
           disabled={reindexing}
-          style={{
-            paddingVertical: t.spacing.sm,
-            opacity: reindexing ? 0.6 : 1
-          }}
+          style={{ paddingVertical: t.spacing.sm, opacity: reindexing ? 0.6 : 1 }}
         >
           <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
-            {reindexing ? 'INDEXING…' : 'RE-INDEX MISSING MESSAGES'}
+            {reindexing ? '▸ INDEXING…' : '↻ RE-INDEX MISSING MESSAGES'}
           </Text>
         </Pressable>
 
-        <Text
-          style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.xl,
-            marginBottom: t.spacing.sm
-          }}
-        >
-          APPEARANCE
-        </Text>
-        <Text
-          style={{
-            ...t.type.meta,
-            color: t.colors.text.quiet,
-            marginBottom: t.spacing.sm
-          }}
-        >
-          Dark is the hero treatment; light adapts. System follows your phone setting.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: t.spacing.sm, marginBottom: t.spacing.md }}>
+        {/* APPEARANCE */}
+        <SectionHeader label="appearance" comment="dark is the hero" topPad />
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: t.spacing.md }}>
           {(['system', 'dark', 'light'] as ThemePref[]).map((p) => {
             const selected = themePref === p;
             return (
@@ -479,12 +491,14 @@ export const SettingsScreen = () => {
                 key={p}
                 onPress={() => void setThemePref(p)}
                 style={{
-                  paddingHorizontal: t.spacing.md,
-                  paddingVertical: t.spacing.sm,
+                  flex: 1,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
                   borderWidth: 1,
-                  borderColor: selected ? t.colors.accent.inverse : t.colors.border.default,
+                  borderColor: selected ? t.colors.text.primary : t.colors.border.default,
+                  borderRadius: t.radii.sm,
                   backgroundColor: selected ? t.colors.bg.subtle : 'transparent',
-                  borderRadius: t.radii.sm
+                  alignItems: 'center'
                 }}
               >
                 <Text
@@ -500,16 +514,8 @@ export const SettingsScreen = () => {
           })}
         </View>
 
-        <Text
-          style={{
-            ...t.type.label,
-            color: t.colors.text.tertiary,
-            marginTop: t.spacing.xl,
-            marginBottom: t.spacing.sm
-          }}
-        >
-          DATA
-        </Text>
+        {/* DATA */}
+        <SectionHeader label="data" comment="local-only · nothing leaves" topPad />
         <Pressable
           onPress={() =>
             Alert.alert(
@@ -521,29 +527,33 @@ export const SettingsScreen = () => {
                   text: 'Wipe',
                   style: 'destructive',
                   onPress: () =>
-                    Alert.alert(
-                      'Confirm',
-                      'Are you absolutely sure?',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Wipe everything',
-                          style: 'destructive',
-                          onPress: async () => {
-                            for (const e of CATALOG) await fsDeleteModel(e.id);
-                            await setSetting('active_model_id', null);
-                            router.replace('/first-run');
-                          }
+                    Alert.alert('Confirm', 'Are you absolutely sure?', [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Wipe everything',
+                        style: 'destructive',
+                        onPress: async () => {
+                          for (const e of CATALOG) await fsDeleteModel(e.id);
+                          await setSetting('active_model_id', null);
+                          router.replace('/first-run');
                         }
-                      ]
-                    )
+                      }
+                    ])
                 }
               ]
             )
           }
+          style={{ paddingVertical: t.spacing.md }}
         >
-          <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>WIPE ALL DATA</Text>
+          <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>→ WIPE ALL DATA</Text>
         </Pressable>
+
+        {/* Footer */}
+        <View style={{ marginTop: t.spacing.xxl, alignItems: 'center', gap: 6 }}>
+          <AsciiRule width={32} />
+          <AsciiBlock>{`  local chat · v0.1.0
+  built for the device in your hand`}</AsciiBlock>
+        </View>
       </View>
     </ScrollView>
   );

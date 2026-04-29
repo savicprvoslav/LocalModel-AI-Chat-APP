@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { StatusLine, StatusLineState } from './StatusLine';
+import { StatusLineState } from './StatusLine';
+import { FenceBox } from './FenceBox';
 import { hapticImpactLight } from '@/haptics';
 
 type Props = {
@@ -15,6 +16,69 @@ type Props = {
   placeholder?: string;
   /** Initial text to seed the composer (e.g., from a skill's starter_text). */
   initialValue?: string;
+};
+
+/**
+ * Format the live status as a single-line code-fence body. Mirrors the
+ * V2 design — model id + ctx + char count when idle, generation telemetry
+ * when streaming, warm-accent icon for warming/error/ctxFull.
+ */
+const renderStatusLine = (
+  state: StatusLineState,
+  charCount: number,
+  ctxModelId: string,
+  ctxLen: number
+): { left: string; lang: string; warm: boolean; right: string | null } => {
+  switch (state.kind) {
+    case 'empty':
+      return {
+        left: `~ ${state.modelId} · ctx ${state.ctx} · ${charCount} chars`,
+        lang: 'ready',
+        warm: false,
+        right: null
+      };
+    case 'typing':
+      return {
+        left: `~ ${state.modelId} · ${state.charCount} chars`,
+        lang: 'ready',
+        warm: false,
+        right: null
+      };
+    case 'streaming':
+      return {
+        left: `● generating · ${state.tokenCount} tok · ${state.tokRate.toFixed(0)} tok/s`,
+        lang: 'streaming',
+        warm: true,
+        right: null
+      };
+    case 'warming':
+      return { left: '◐ warming up the model', lang: 'warming', warm: true, right: null };
+    case 'error':
+      return {
+        left: `✕ ${state.reason}`,
+        lang: 'error',
+        warm: true,
+        right: 'tap to retry'
+      };
+    case 'ctxFull':
+      return {
+        left: '⚠ context full · oldest turn dropped',
+        lang: 'ctx-full',
+        warm: true,
+        right: null
+      };
+    default: {
+      // Defensive fallback (shouldn't be reached due to exhaustive switch).
+      const _: never = state;
+      void _;
+      return {
+        left: `~ ${ctxModelId} · ctx ${ctxLen}`,
+        lang: 'ready',
+        warm: false,
+        right: null
+      };
+    }
+  }
 };
 
 export const Composer = ({
@@ -32,33 +96,34 @@ export const Composer = ({
   const [value, setValue] = useState(initialValue ?? '');
   const inputRef = useRef<TextInput>(null);
 
-  // Seed and focus once when started from a skill (initialValue provided).
   useEffect(() => {
     if (initialValue && initialValue.length > 0) {
       setValue(initialValue);
     }
-    // Auto-focus on mount so keyboard pops up immediately when the user
-    // arrives from a skill chip or freshly created conversation.
     const id = setTimeout(() => {
       inputRef.current?.focus();
     }, 250);
     return () => clearTimeout(id);
-    // Intentionally mount-only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const liveStatus: StatusLineState =
-    isStreaming
-      ? status
-      : value.length > 0 && status.kind === 'empty'
-        ? {
-            kind: 'typing',
-            project: status.project,
-            conv: status.conv,
-            modelId: status.modelId,
-            charCount: value.length
-          }
-        : status;
+  // Live-update the typing state with the current character count.
+  const liveStatus: StatusLineState = isStreaming
+    ? status
+    : value.length > 0 && status.kind === 'empty'
+      ? {
+          kind: 'typing',
+          project: status.project,
+          conv: status.conv,
+          modelId: status.modelId,
+          charCount: value.length
+        }
+      : status;
+
+  const ctxModelId = status.kind === 'empty' || status.kind === 'typing' ? status.modelId : '';
+  const ctxLen = status.kind === 'empty' ? status.ctx : 0;
+  const sl = renderStatusLine(liveStatus, value.length, ctxModelId, ctxLen);
+  const isRetryable = liveStatus.kind === 'error' && !!onRetry;
 
   const send = () => {
     const trimmed = value.trim();
@@ -74,24 +139,71 @@ export const Composer = ({
       style={{
         borderTopWidth: 1,
         borderTopColor: t.colors.border.subtle,
-        backgroundColor: t.colors.bg.canvas
+        backgroundColor: t.colors.bg.canvas,
+        paddingBottom: insets.bottom + t.spacing.sm
       }}
     >
-      <StatusLine state={liveStatus} onRetry={onRetry} />
+      {/* Fence-box status line — flips to warm border while streaming/erroring */}
+      <View style={{ paddingHorizontal: t.spacing.md, paddingTop: t.spacing.md + 4 }}>
+        <Pressable
+          onPress={isRetryable ? onRetry : undefined}
+          disabled={!isRetryable}
+        >
+          <FenceBox
+            lang={sl.lang}
+            borderColor={sl.warm ? t.colors.accent.warm : t.colors.border.default}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between'
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: t.fonts.mono,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  color: sl.warm ? t.colors.accent.warm : t.colors.text.secondary,
+                  flex: 1
+                }}
+              >
+                {sl.left}
+              </Text>
+              {sl.right ? (
+                <Text
+                  style={{
+                    fontFamily: t.fonts.mono,
+                    fontSize: 11,
+                    color: t.colors.text.tertiary
+                  }}
+                >
+                  {sl.right}
+                </Text>
+              ) : null}
+            </View>
+          </FenceBox>
+        </Pressable>
+      </View>
+
+      {/* Composer row: $ prompt — textarea — STOP / send arrow */}
       <View
         style={{
           flexDirection: 'row',
-          alignItems: 'center',
+          alignItems: 'flex-end',
+          gap: t.spacing.sm,
           paddingHorizontal: t.spacing.md,
-          paddingTop: t.spacing.xs,
-          paddingBottom: t.spacing.md + insets.bottom,
-          gap: t.spacing.sm
+          paddingTop: t.spacing.sm + 2,
+          paddingBottom: 4
         }}
       >
         <Text
           style={{
-            ...t.type.bodyUser,
-            color: isStreaming ? t.colors.text.quiet : t.colors.text.tertiary
+            fontFamily: t.fonts.mono,
+            fontSize: 14,
+            color: isStreaming ? t.colors.text.quiet : t.colors.text.tertiary,
+            paddingTop: 8
           }}
         >
           $
@@ -106,11 +218,13 @@ export const Composer = ({
           multiline
           style={{
             flex: 1,
-            ...t.type.bodyUser,
+            fontFamily: t.fonts.mono,
+            fontSize: 14,
+            lineHeight: 22,
             color: t.colors.text.primary,
             opacity: isStreaming ? 0.3 : 1,
             maxHeight: 120,
-            paddingVertical: 4
+            paddingVertical: 7
           }}
           onSubmitEditing={send}
           submitBehavior="blurAndSubmit"
@@ -120,27 +234,46 @@ export const Composer = ({
           <Pressable
             onPress={onStop}
             style={{
-              paddingHorizontal: t.spacing.sm + 1,
-              paddingVertical: 4,
-              borderWidth: 1,
-              borderColor: t.colors.accent.warm,
-              borderRadius: t.radii.sm
+              width: 36,
+              height: 36,
+              borderRadius: t.radii.sm,
+              backgroundColor: t.colors.accent.warm,
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>STOP</Text>
+            {/* Stop = filled square glyph */}
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                backgroundColor: t.colors.bg.canvas
+              }}
+            />
           </Pressable>
         ) : (
-          <Pressable onPress={send} disabled={value.trim().length === 0 || disabled}>
+          <Pressable
+            onPress={send}
+            disabled={value.trim().length === 0 || disabled}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: t.radii.sm,
+              backgroundColor: t.colors.accent.inverse,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: value.trim().length === 0 ? 0.3 : 1
+            }}
+          >
             <Text
               style={{
-                ...t.type.label,
-                color:
-                  value.trim().length === 0
-                    ? t.colors.text.quiet
-                    : t.colors.text.primary
+                fontFamily: t.fonts.monoBold,
+                fontSize: 16,
+                color: t.colors.bg.canvas,
+                lineHeight: 16
               }}
             >
-              ↵
+              ↑
             </Text>
           </Pressable>
         )}

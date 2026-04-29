@@ -1,15 +1,10 @@
 import { useCallback, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Pressable,
-  ScrollView,
-  Text,
-  View
-} from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '../theme/useTheme';
-import { ScreenHeader } from '../components/ScreenHeader';
+import { EditorialHeader } from '../components/EditorialHeader';
+import { AsciiRule } from '../components/AsciiRule';
+import { AsciiBlock } from '../components/AsciiBlock';
 import { Project, listProjects } from '@/db/projects';
 import {
   Conversation,
@@ -23,9 +18,9 @@ import { Skill, listSkills } from '@/db/skills';
 import { PromptModal } from '../components/PromptModal';
 
 type Row =
-  | { type: 'project-header'; project: Project }
-  | { type: 'inbox-header' }
-  | { type: 'conversation'; conversation: Conversation; preview?: string };
+  | { type: 'project-header'; project: Project; count: number }
+  | { type: 'inbox-header'; count: number }
+  | { type: 'conversation'; conversation: Conversation; index: number; preview?: string };
 
 const formatRelative = (ts: number): string => {
   const d = (Date.now() - ts) / 1000;
@@ -40,12 +35,18 @@ export const ConversationListScreen = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [convCount, setConvCount] = useState(0);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
-    const [projects, conversations] = await Promise.all([listProjects(), listConversations()]);
-    setProjects(projects);
+    const [projectsList, conversations] = await Promise.all([
+      listProjects(),
+      listConversations()
+    ]);
+    setProjects(projectsList);
+    setConvCount(conversations.length);
+
     const byProject = new Map<string | null, Conversation[]>();
     for (const c of conversations) {
       const k = c.project_id;
@@ -54,27 +55,32 @@ export const ConversationListScreen = () => {
     }
     const out: Row[] = [];
     if (byProject.has(null)) {
-      out.push({ type: 'inbox-header' });
-      for (const c of byProject.get(null)!) {
+      const inbox = byProject.get(null)!;
+      out.push({ type: 'inbox-header', count: inbox.length });
+      for (let i = 0; i < inbox.length; i++) {
+        const c = inbox[i]!;
         const msgs = await listMessages(c.id);
         const last = msgs[msgs.length - 1];
         out.push({
           type: 'conversation',
           conversation: c,
+          index: i + 1,
           ...(last ? { preview: last.content.slice(0, 80) } : {})
         });
       }
     }
-    for (const p of projects) {
+    for (const p of projectsList) {
       const list = byProject.get(p.id);
       if (!list) continue;
-      out.push({ type: 'project-header', project: p });
-      for (const c of list) {
+      out.push({ type: 'project-header', project: p, count: list.length });
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i]!;
         const msgs = await listMessages(c.id);
         const last = msgs[msgs.length - 1];
         out.push({
           type: 'conversation',
           conversation: c,
+          index: i + 1,
           ...(last ? { preview: last.content.slice(0, 80) } : {})
         });
       }
@@ -93,9 +99,20 @@ export const ConversationListScreen = () => {
     router.push(`/conversation/${c.id}`);
   };
 
-  const promptRename = (c: Conversation) => {
-    setRenameTarget(c);
+  const startFromSkill = async (skill: Skill) => {
+    const c = await createConversation({
+      title: skill.name,
+      system_prompt: skill.system_prompt,
+      persona_id: skill.default_persona_id,
+      skill_id: skill.id
+    });
+    router.push({
+      pathname: `/conversation/${c.id}`,
+      params: skill.starter_text ? { starter: skill.starter_text } : {}
+    });
   };
+
+  const promptRename = (c: Conversation) => setRenameTarget(c);
 
   const handleRenameSubmit = async (text: string) => {
     const target = renameTarget;
@@ -122,7 +139,11 @@ export const ConversationListScreen = () => {
   };
 
   const promptMoveToProject = (c: Conversation) => {
-    const options: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }> = [
+    const options: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'cancel' | 'destructive';
+    }> = [
       {
         text: 'Inbox (no project)',
         onPress: async () => {
@@ -151,111 +172,87 @@ export const ConversationListScreen = () => {
     ]);
   };
 
-  const startFromSkill = async (skill: Skill) => {
-    const c = await createConversation({
-      title: skill.name,
-      system_prompt: skill.system_prompt,
-      persona_id: skill.default_persona_id,
-      skill_id: skill.id
-    });
-    router.push({
-      pathname: `/conversation/${c.id}`,
-      params: skill.starter_text ? { starter: skill.starter_text } : {}
-    });
-  };
+  // Header actions: + NEW THREAD button + search + settings glyphs.
+  const headerActions = (
+    <View style={{ flexDirection: 'row', gap: t.spacing.sm }}>
+      <Pressable
+        onPress={newConversation}
+        style={{
+          flex: 1,
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          backgroundColor: t.colors.accent.inverse,
+          borderRadius: t.radii.sm,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ ...t.type.label, color: t.colors.bg.canvas }}>+ NEW THREAD</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/search')}
+        style={{
+          width: 44,
+          height: 38,
+          borderWidth: 1,
+          borderColor: t.colors.border.default,
+          borderRadius: t.radii.sm,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⌕</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/settings')}
+        style={{
+          width: 44,
+          height: 38,
+          borderWidth: 1,
+          borderColor: t.colors.border.default,
+          borderRadius: t.radii.sm,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⚙</Text>
+      </Pressable>
+    </View>
+  );
+
+  const empty = (
+    <View
+      style={{
+        paddingVertical: 64,
+        alignItems: 'center',
+        gap: t.spacing.lg
+      }}
+    >
+      <AsciiBlock>{`  ┌─────────────┐
+  │   empty.    │
+  │   no chats  │
+  │   yet.      │
+  └─────────────┘`}</AsciiBlock>
+      <Pressable onPress={newConversation}>
+        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+          + START YOUR FIRST THREAD
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}>
-      <ScreenHeader
-        title="local chat"
-        right={
-          <View style={{ flexDirection: 'row', gap: t.spacing.md, alignItems: 'center' }}>
-            <Pressable onPress={() => router.push('/search')} hitSlop={8}>
-              <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⌕</Text>
-            </Pressable>
-            <Pressable onPress={newConversation}>
-              <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push('/settings')}>
-              <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>⚙</Text>
-            </Pressable>
-          </View>
-        }
+      <EditorialHeader
+        eyebrow={`LOCAL · ONLINE · ${convCount} ${convCount === 1 ? 'CHAT' : 'CHATS'}`}
+        pulse
+        title="conversations"
+        subtitle="private threads, persisted to disk."
+        actions={headerActions}
       />
-      <Pressable
-        onPress={() => router.push('/projects')}
-        style={{
-          paddingHorizontal: t.spacing.lg,
-          paddingTop: t.spacing.md,
-          paddingBottom: t.spacing.sm,
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: t.colors.border.subtle
-        }}
-      >
-        <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
-          PROJECTS ({projects.length})
-        </Text>
-        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>OPEN ›</Text>
-      </Pressable>
-      {skills.length > 0 ? (
-        <View>
-          <Text
-            style={{
-              ...t.type.label,
-              color: t.colors.text.tertiary,
-              paddingHorizontal: t.spacing.lg,
-              paddingTop: t.spacing.md,
-              paddingBottom: t.spacing.xs
-            }}
-          >
-            START WITH A SKILL
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: t.spacing.lg,
-              paddingBottom: t.spacing.md,
-              gap: t.spacing.sm
-            }}
-          >
-            {skills.map((s) => (
-              <Pressable
-                key={s.id}
-                onPress={() => startFromSkill(s)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: t.spacing.xs,
-                  paddingHorizontal: t.spacing.md,
-                  paddingVertical: t.spacing.sm,
-                  borderWidth: 1,
-                  borderColor: t.colors.border.default,
-                  borderRadius: t.radii.sm,
-                  backgroundColor: t.colors.bg.subtle
-                }}
-              >
-                {s.emoji ? <Text style={{ fontSize: 14 }}>{s.emoji}</Text> : null}
-                <Text style={{ ...t.type.bodyUser, color: t.colors.text.primary }}>
-                  {s.name}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-      {rows.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
-            ~/no conversations yet
-          </Text>
-          <Pressable onPress={newConversation} style={{ marginTop: t.spacing.md }}>
-            <Text style={{ ...t.type.label, color: t.colors.text.primary }}>+ NEW</Text>
-          </Pressable>
-        </View>
+
+      {rows.length === 0 && skills.length === 0 ? (
+        empty
       ) : (
         <FlatList
           data={rows}
@@ -266,85 +263,176 @@ export const ConversationListScreen = () => {
                 ? `ph-${r.project.id}`
                 : `inbox-${i}`
           }
-          renderItem={({ item }) => {
-            if (item.type === 'inbox-header')
-              return (
-                <Text
+          ListHeaderComponent={
+            skills.length > 0 ? (
+              <View style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.lg }}>
+                <View
                   style={{
-                    ...t.type.label,
-                    color: t.colors.text.tertiary,
-                    paddingHorizontal: t.spacing.lg,
-                    paddingTop: t.spacing.lg,
-                    paddingBottom: t.spacing.xs
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: t.spacing.sm + 2
                   }}
                 >
-                  ~/INBOX
-                </Text>
-              );
-            if (item.type === 'project-header')
+                  <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
+                    $ start with
+                  </Text>
+                  <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+                    {`${skills.length} skills`}
+                  </Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: t.spacing.sm, paddingRight: t.spacing.lg }}
+                >
+                  {skills.map((s) => (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => startFromSkill(s)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderWidth: 1,
+                        borderColor: t.colors.border.default,
+                        borderRadius: t.radii.sm
+                      }}
+                    >
+                      <Text style={{ ...t.type.bodyUserV2, color: t.colors.accent.warm }}>/</Text>
+                      <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.secondary }}>
+                        {s.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            if (item.type === 'inbox-header') {
               return (
-                <Pressable onPress={() => router.push(`/project/${item.project.id}`)}>
-                  <Text
+                <View style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.md }}>
+                  <AsciiRule />
+                  <View
                     style={{
-                      ...t.type.label,
-                      color: t.colors.text.tertiary,
-                      paddingHorizontal: t.spacing.lg,
-                      paddingTop: t.spacing.lg,
-                      paddingBottom: t.spacing.xs
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      marginTop: t.spacing.sm,
+                      marginBottom: t.spacing.sm
                     }}
                   >
-                    ~/{item.project.name.toUpperCase()}
-                  </Text>
+                    <Text style={{ ...t.type.label, color: t.colors.text.primary }}>~/INBOX</Text>
+                    <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+                      {`${item.count} ${item.count === 1 ? 'thread' : 'threads'}`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }
+            if (item.type === 'project-header') {
+              return (
+                <Pressable
+                  onPress={() => router.push(`/project/${item.project.id}`)}
+                  style={{ paddingHorizontal: t.spacing.xl, paddingTop: t.spacing.md }}
+                >
+                  <AsciiRule />
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      marginTop: t.spacing.sm,
+                      marginBottom: t.spacing.sm
+                    }}
+                  >
+                    <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+                      {`~/${item.project.name.toUpperCase()}`}
+                    </Text>
+                    <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+                      {`${item.count} threads · open ›`}
+                    </Text>
+                  </View>
                 </Pressable>
               );
+            }
             const c = item.conversation;
             return (
               <Pressable
                 onPress={() => router.push(`/conversation/${c.id}`)}
                 onLongPress={() => onLongPress(c)}
                 delayLongPress={400}
-                style={{ paddingHorizontal: t.spacing.lg, paddingVertical: t.spacing.sm + 2 }}
+                style={{
+                  paddingHorizontal: t.spacing.xl,
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: t.colors.border.subtle
+                }}
               >
                 <View
                   style={{
                     flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'baseline'
+                    gap: t.spacing.md
                   }}
                 >
-                  <Text
-                    style={{ ...t.type.bodyUser, color: t.colors.text.primary, flex: 1 }}
-                    numberOfLines={1}
-                  >
-                    {c.title}
-                  </Text>
+                  {/* Marginalia rail with the index */}
                   <Text
                     style={{
-                      ...t.type.meta,
-                      color: t.colors.text.tertiary,
-                      marginLeft: t.spacing.sm
+                      ...t.type.gutter,
+                      color: t.colors.text.quiet,
+                      width: 24,
+                      textAlign: 'right',
+                      paddingTop: 3
                     }}
                   >
-                    {formatRelative(c.updated_at)}
+                    {String(item.index).padStart(2, '0')}
                   </Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        gap: t.spacing.sm,
+                        marginBottom: 4
+                      }}
+                    >
+                      <Text
+                        style={{ ...t.type.displaySerif, color: t.colors.text.primary, flex: 1 }}
+                        numberOfLines={1}
+                      >
+                        {c.title}
+                      </Text>
+                      <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>
+                        {formatRelative(c.updated_at)}
+                      </Text>
+                    </View>
+                    {item.preview ? (
+                      <Text
+                        style={{
+                          fontFamily: t.fonts.mono,
+                          fontSize: 12,
+                          lineHeight: 17,
+                          color: t.colors.text.tertiary
+                        }}
+                        numberOfLines={1}
+                      >
+                        <Text style={{ color: t.colors.text.quiet }}>{'› '}</Text>
+                        {item.preview}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-                {item.preview ? (
-                  <Text
-                    style={{
-                      ...t.type.bodyAi,
-                      color: t.colors.text.tertiary,
-                      fontSize: 13
-                    }}
-                    numberOfLines={1}
-                  >
-                    {item.preview}
-                  </Text>
-                ) : null}
               </Pressable>
             );
           }}
+          ListFooterComponent={<View style={{ height: t.spacing.xl }} />}
         />
       )}
+
       <PromptModal
         visible={renameTarget !== null}
         title="Rename conversation"

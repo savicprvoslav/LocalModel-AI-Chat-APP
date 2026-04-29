@@ -11,12 +11,13 @@ import {
   View
 } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { ProjectPill } from '../components/ProjectPill';
 import { MessageBubble } from '../components/MessageBubble';
 import { Composer } from '../components/Composer';
 import type { StatusLineState } from '../components/StatusLine';
+import { AsciiBlock } from '../components/AsciiBlock';
+import { FenceBox } from '../components/FenceBox';
 import { useConversation } from '@/chat/useConversation';
 import { getSetting } from '@/db/settings';
 import { Skill, getSkill } from '@/db/skills';
@@ -42,6 +43,7 @@ type Props = {
 
 export const ConversationScreen = ({ conversationId, starterText }: Props) => {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const {
     conversation,
     project,
@@ -362,145 +364,221 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
       style={{ flex: 1, backgroundColor: t.colors.bg.canvas }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScreenHeader
-        left={
-          <Pressable onPress={() => router.back()}>
-            <Text style={{ ...t.type.heading, color: t.colors.text.primary }}>←</Text>
-          </Pressable>
-        }
-        title={conversation?.title ?? '…'}
-        onTitlePress={conversation ? promptRename : undefined}
-        right={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm }}>
-            {project ? (
-              <ProjectPill
-                name={project.name}
-                onPress={() => router.push(`/project/${project.id}`)}
-              />
-            ) : null}
-            <Pressable onPress={onOverflowPress} hitSlop={8}>
-              <Text style={{ ...t.type.heading, color: t.colors.text.tertiary }}>⋯</Text>
+      {/* V2 header — back · breadcrumb + serif title · overflow */}
+      <View
+        style={{
+          paddingTop: insets.top + t.spacing.md - 2,
+          paddingHorizontal: t.spacing.lg,
+          paddingBottom: t.spacing.md - 2,
+          borderBottomWidth: 1,
+          borderBottomColor: t.colors.border.subtle,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: t.spacing.sm + 2
+        }}
+      >
+        <Pressable
+          onPress={() => router.back()}
+          style={{
+            width: 32,
+            height: 32,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Text style={{ fontFamily: t.fonts.mono, fontSize: 14, color: t.colors.text.primary }}>
+            ←
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={conversation ? promptRename : undefined}
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          {project ? (
+            <Pressable onPress={() => router.push(`/project/${project.id}`)}>
+              <Text style={{ ...t.type.meta, color: t.colors.accent.warm }}>
+                {`~/${project.name}`}
+              </Text>
             </Pressable>
-          </View>
-        }
-      />
-      {(persona || skill) ? (
+          ) : (
+            <Text style={{ ...t.type.meta, color: t.colors.text.tertiary }}>~/inbox</Text>
+          )}
+          <Text
+            style={{ ...t.type.displaySerif, color: t.colors.text.primary }}
+            numberOfLines={1}
+          >
+            {conversation?.title ?? '…'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onOverflowPress}
+          hitSlop={8}
+          style={{
+            width: 32,
+            height: 32,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: t.fonts.mono,
+              fontSize: 16,
+              letterSpacing: 1,
+              color: t.colors.text.tertiary
+            }}
+          >
+            ···
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Persona / skill banner — slash-style skill pill + persona chip */}
+      {persona || skill ? (
         <View
           style={{
             flexDirection: 'row',
             paddingHorizontal: t.spacing.lg,
-            paddingVertical: t.spacing.xs,
+            paddingVertical: t.spacing.sm,
             gap: t.spacing.sm,
             alignItems: 'center',
             borderBottomWidth: 1,
-            borderBottomColor: t.colors.border.subtle
+            borderBottomColor: t.colors.border.subtle,
+            backgroundColor: t.colors.bg.subtle
           }}
         >
-          {persona ? (
-            <Pressable
-              onPress={onPersonaPillPress}
-              style={{
-                paddingHorizontal: t.spacing.sm,
-                paddingVertical: 3,
-                borderWidth: 1,
-                borderColor: t.colors.border.subtle,
-                borderRadius: t.radii.sm
-              }}
-            >
-              <Text style={{ ...t.type.label, color: t.colors.text.secondary, fontSize: 9.5 }}>
-                ◎ {persona.name.toUpperCase()}
-              </Text>
-            </Pressable>
-          ) : null}
           {skill ? (
             <Pressable
               onPress={() => router.push(`/skill/${skill.id}`)}
               style={{
-                paddingHorizontal: t.spacing.sm,
-                paddingVertical: 3,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                paddingHorizontal: 9,
+                paddingVertical: 4,
                 borderWidth: 1,
                 borderColor: t.colors.accent.warm,
                 borderRadius: t.radii.sm
               }}
             >
-              <Text style={{ ...t.type.label, color: t.colors.accent.warm, fontSize: 9.5 }}>
-                {skill.emoji} {skill.name.toUpperCase()}
+              <Text
+                style={{
+                  fontFamily: t.fonts.mono,
+                  fontSize: 9.5,
+                  fontWeight: '600',
+                  letterSpacing: 0.6,
+                  color: t.colors.accent.warm
+                }}
+              >
+                {`/${skill.name.toLowerCase()}`}
               </Text>
             </Pressable>
           ) : null}
+          {persona ? (
+            <Pressable
+              onPress={onPersonaPillPress}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                paddingHorizontal: 9,
+                paddingVertical: 4,
+                borderWidth: 1,
+                borderColor: t.colors.border.subtle,
+                borderRadius: t.radii.sm
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: t.fonts.mono,
+                  fontSize: 9.5,
+                  fontWeight: '600',
+                  letterSpacing: 0.6,
+                  color: t.colors.text.secondary
+                }}
+              >
+                {`◎ ${persona.name.toUpperCase()}`}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Text style={{ ...t.type.meta, color: t.colors.text.tertiary, marginLeft: 'auto' }}>
+            {activeModel || ''}
+          </Text>
         </View>
       ) : null}
+
       <FlatList
         ref={listRef}
         data={messages}
         keyExtractor={(m) => m.id}
         contentContainerStyle={{
-          padding: t.spacing.lg,
+          paddingHorizontal: t.spacing.lg,
+          paddingTop: t.spacing.lg,
+          paddingBottom: t.spacing.lg,
           flexGrow: 1
         }}
         renderItem={({ item, index }) => (
           <MessageBubble
             message={item}
+            index={index + 1}
             isStreaming={
               isStreaming && index === messages.length - 1 && item.role === 'assistant'
             }
           />
         )}
         ListEmptyComponent={
-          <View
-            style={{
-              flex: 1,
-              justifyContent: 'center',
-              paddingVertical: t.spacing.xxl,
-              gap: t.spacing.lg
-            }}
-          >
+          <View style={{ paddingVertical: t.spacing.xl, gap: t.spacing.md }}>
+            <AsciiBlock warm size={10}>{`  ╭───────────────────────╮
+  │  ready when you are.  │
+  ╰───────────────────────╯`}</AsciiBlock>
             {skill ? (
-              <View style={{ gap: t.spacing.xs }}>
-                <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>
-                  {skill.emoji} {skill.name.toUpperCase()}
+              <FenceBox lang="skill">
+                <Text
+                  style={{
+                    fontFamily: t.fonts.mono,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: t.colors.accent.warm,
+                    marginBottom: 4
+                  }}
+                >
+                  {`/${skill.name.toLowerCase()}`}
                 </Text>
                 {skill.description ? (
-                  <Text
-                    style={{
-                      ...t.type.bodyAi,
-                      color: t.colors.text.secondary,
-                      fontSize: 15
-                    }}
-                  >
+                  <Text style={{ ...t.type.bodyAi, color: t.colors.text.secondary, fontSize: 14 }}>
                     {skill.description}
                   </Text>
                 ) : null}
-              </View>
+              </FenceBox>
             ) : null}
-            {persona ? (
-              <View style={{ gap: t.spacing.xs }}>
-                <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>
-                  ◎ {persona.name.toUpperCase()}
+            {persona && !skill ? (
+              <FenceBox lang="persona">
+                <Text
+                  style={{
+                    ...t.type.label,
+                    color: t.colors.text.tertiary,
+                    marginBottom: 4
+                  }}
+                >
+                  {`◎ ${persona.name.toUpperCase()}`}
                 </Text>
                 {persona.description ? (
-                  <Text
-                    style={{
-                      ...t.type.bodyAi,
-                      color: t.colors.text.secondary,
-                      fontSize: 15
-                    }}
-                  >
+                  <Text style={{ ...t.type.bodyAi, color: t.colors.text.secondary, fontSize: 14 }}>
                     {persona.description}
                   </Text>
                 ) : null}
-              </View>
+              </FenceBox>
             ) : null}
-            <Text
-              style={{
-                ...t.type.meta,
-                color: t.colors.text.quiet,
-                marginTop: t.spacing.md
-              }}
-            >
+            <Text style={{ ...t.type.meta, color: t.colors.text.quiet }}>
               {skill?.starter_text
-                ? '~/ready · starter text in the composer below'
-                : '~/ready · type a message to start'}
+                ? 'starter text waits in the composer below.'
+                : 'type below to start. enter sends, shift+enter for a newline.'}
             </Text>
           </View>
         }
