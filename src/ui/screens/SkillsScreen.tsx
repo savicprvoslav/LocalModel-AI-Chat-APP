@@ -5,11 +5,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { Skill, listSkills, deleteSkill, duplicateSkill, createSkill } from '@/db/skills';
 import { createConversation } from '@/db/conversations';
+import { listPersonas } from '@/db/personas';
 import { importSkillFromMarkdown } from '@/skills/importSkill';
+import { draftSkill, SkillDraft } from '@/skills/draftSkill';
+import { getEngine } from '@/engine';
 import { SectionHeader } from '../components/SectionHeader';
 import { FenceBox } from '../components/FenceBox';
 import { ActionSheet, ActionSheetItem } from '../components/ActionSheet';
 import { PromptModal } from '../components/PromptModal';
+import { DraftSkillModal } from '../components/DraftSkillModal';
 
 export const SkillsScreen = () => {
   const t = useTheme();
@@ -17,6 +21,7 @@ export const SkillsScreen = () => {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [sheetFor, setSheetFor] = useState<Skill | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setSkills(await listSkills());
@@ -27,6 +32,44 @@ export const SkillsScreen = () => {
       void reload();
     }, [reload])
   );
+
+  const onDraftStart = () => {
+    if (!getEngine().isReady()) {
+      Alert.alert(
+        'Model not loaded',
+        'Open a chat once to load the active model, then try drafting again.'
+      );
+      return;
+    }
+    setDraftOpen(true);
+  };
+
+  const onDraftGenerate = async (
+    description: string,
+    signal: AbortSignal
+  ): Promise<SkillDraft> => {
+    const personas = await listPersonas();
+    return draftSkill(getEngine(), { description, personas, signal });
+  };
+
+  const onDraftAccept = async (d: SkillDraft) => {
+    setDraftOpen(false);
+    const skill = await createSkill({
+      name: d.name,
+      description: d.description,
+      emoji: '✨',
+      category: 'drafted',
+      system_prompt: d.system_prompt,
+      starter_text: d.starter_text,
+      placeholder_text: d.placeholder_text,
+      default_persona_id: d.default_persona_id,
+      temperature: d.temperature,
+      is_builtin: false,
+      sort_order: 999
+    });
+    await reload();
+    router.push(`/skill/${skill.id}`);
+  };
 
   const onImport = async (raw: string) => {
     setImportOpen(false);
@@ -171,6 +214,18 @@ export const SkillsScreen = () => {
           </Text>
         </View>
         <Pressable
+          onPress={onDraftStart}
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderWidth: 1,
+            borderColor: t.colors.border.default,
+            borderRadius: t.radii.sm
+          }}
+        >
+          <Text style={{ ...t.type.label, color: t.colors.text.primary }}>✨ DRAFT</Text>
+        </Pressable>
+        <Pressable
           onPress={() => setImportOpen(true)}
           style={{
             paddingHorizontal: 10,
@@ -295,6 +350,13 @@ export const SkillsScreen = () => {
         submitLabel="Import"
         onSubmit={(v) => void onImport(v)}
         onCancel={() => setImportOpen(false)}
+      />
+
+      <DraftSkillModal
+        visible={draftOpen}
+        onGenerate={onDraftGenerate}
+        onAccept={(d) => void onDraftAccept(d)}
+        onCancel={() => setDraftOpen(false)}
       />
     </View>
   );
