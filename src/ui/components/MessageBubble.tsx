@@ -1,7 +1,8 @@
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../theme/useTheme';
 import { Message } from '@/db/messages';
+import type { MessageAttachment } from '@/db/attachments';
 import { StreamingCursor } from './StreamingCursor';
 
 const formatTime = (ts: number): string => {
@@ -23,6 +24,39 @@ type Props = {
   isStreaming: boolean;
   /** 1-based ordinal of this message in the conversation; rendered in the gutter. */
   index: number;
+  /** Image (or future audio/file) attachments tied to this message. */
+  attachments?: MessageAttachment[];
+};
+
+const Attachments = ({ items }: { items: MessageAttachment[] }) => {
+  const t = useTheme();
+  if (items.length === 0) return null;
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: t.spacing.sm,
+        marginTop: t.spacing.sm,
+        marginBottom: 2
+      }}
+    >
+      {items.map((a) => (
+        <Image
+          key={a.id}
+          source={{ uri: a.uri }}
+          style={{
+            width: 140,
+            height: 140,
+            borderRadius: t.radii.sm,
+            borderWidth: 1,
+            borderColor: t.colors.border.subtle
+          }}
+          resizeMode="cover"
+        />
+      ))}
+    </View>
+  );
 };
 
 /**
@@ -30,9 +64,10 @@ type Props = {
  * User turns get the index in mono ("01"), assistant turns get a returns
  * arrow ("↳") in warm orange. AI prose is serif at 17/27.
  */
-export const MessageBubble = ({ message, isStreaming, index }: Props) => {
+export const MessageBubble = ({ message, isStreaming, index, attachments }: Props) => {
   const t = useTheme();
   const indexStr = String(index).padStart(2, '0');
+  const items = attachments ?? [];
 
   if (message.role === 'user') {
     return (
@@ -55,10 +90,13 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
           {indexStr}
         </Text>
         <View style={{ flex: 1 }}>
-          <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.secondary }}>
-            <Text style={{ color: t.colors.text.quiet }}>{'$ '}</Text>
-            {message.content}
-          </Text>
+          {message.content.trim().length > 0 ? (
+            <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.secondary }}>
+              <Text style={{ color: t.colors.text.quiet }}>{'$ '}</Text>
+              {message.content}
+            </Text>
+          ) : null}
+          <Attachments items={items} />
           <Text
             style={{
               ...t.type.metaV2,
@@ -117,6 +155,7 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
         >
           {message.content || ' '}
         </Markdown>
+        <Attachments items={items} />
         {isStreaming ? <StreamingCursor /> : null}
         <Text
           style={{

@@ -27,4 +27,15 @@ export interface ChatEngine {
     cb: StreamCallbacks
   ): Promise<void>;
   getContextLength?(): number;
+  /**
+   * Whether the active model + engine pair can read image inputs. Engines
+   * default to false (text-only). Vision-capable engines (e.g. a future
+   * llama.cpp build with mmproj support, or LiteRT-LM Multimodal) override.
+   *
+   * When false, useConversation will:
+   *   - allow the user to attach images (for record-keeping)
+   *   - emit a one-line note in the prompt that an image was attached but
+   *     the active model can't see it
+   */
+  supportsVision?(): boolean;
 }

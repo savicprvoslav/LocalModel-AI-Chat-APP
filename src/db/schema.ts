@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Initial schema (v1). Used for `:memory:` test DBs.
@@ -118,6 +118,24 @@ CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
   INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
   INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
 END;
+
+-- Photos / images attached to a message. Files live on disk under
+-- documentDirectory/attachments/<message_id>/<filename>; this table
+-- stores the metadata + URI. Cascades on message delete.
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('image')),
+  uri TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  size_bytes INTEGER,
+  source TEXT NOT NULL CHECK (source IN ('camera', 'library')),
+  caption TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_msg_att_msg ON message_attachments(message_id, created_at);
 `;
 
 /**
@@ -199,5 +217,21 @@ export const MIGRATIONS: Record<number, string[]> = {
       embedder TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`
+  ],
+  6: [
+    `CREATE TABLE IF NOT EXISTS message_attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('image')),
+      uri TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      size_bytes INTEGER,
+      source TEXT NOT NULL CHECK (source IN ('camera', 'library')),
+      caption TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_msg_att_msg ON message_attachments(message_id, created_at)`
   ]
 };

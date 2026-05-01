@@ -17,7 +17,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "rs.pscode.localchat",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Local Chat uses the camera so you can take photos and ask the assistant about them — useful for travel signs, menus, and landmarks.",
+        "NSPhotoLibraryUsageDescription": "Local Chat reads photos from your library so you can attach them to a chat — useful for asking the assistant about something you've already photographed."
       }
     },
     "android": {
@@ -27,7 +29,8 @@
         "backgroundColor": "#161412"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["android.permission.CAMERA", "android.permission.READ_MEDIA_IMAGES"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +39,13 @@
       "expo-font",
       "expo-router",
       "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Local Chat reads photos from your library so you can attach them to a chat.",
+          "cameraPermission": "Local Chat uses the camera so you can take photos and ask the assistant about them."
+        }
+      ],
       "./plugins/with-disable-script-sandboxing.js"
     ],
     "experiments": {

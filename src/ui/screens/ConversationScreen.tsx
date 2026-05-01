@@ -45,6 +45,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     project,
     persona,
     messages,
+    attachmentsByMessage,
     status,
     error,
     tokenCount,
@@ -572,6 +573,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
           <MessageBubble
             message={item}
             index={index + 1}
+            attachments={attachmentsByMessage[item.id]}
             isStreaming={
               isStreaming && index === messages.length - 1 && item.role === 'assistant'
             }

@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { StatusLineState } from './StatusLine';
 import { SlashMenu } from './SlashMenu';
 import { hapticImpactLight } from '@/haptics';
 import type { Skill } from '@/db/skills';
+import {
+  captureFromCamera,
+  pickFromLibrary,
+  type PickedImage
+} from '@/chat/imagePicker';
 
 type Props = {
   status: StatusLineState;
   disabled?: boolean;
   isStreaming?: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments?: PickedImage[]) => void;
   onStop?: () => void;
   onRetry?: () => void;
   placeholder?: string;
@@ -102,6 +107,7 @@ export const Composer = ({
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState(initialValue ?? '');
+  const [pendingAttachments, setPendingAttachments] = useState<PickedImage[]>([]);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -154,11 +160,38 @@ export const Composer = ({
 
   const send = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled || isStreaming) return;
+    const hasContent = trimmed.length > 0 || pendingAttachments.length > 0;
+    if (!hasContent || disabled || isStreaming) return;
     hapticImpactLight();
-    onSend(trimmed);
+    onSend(trimmed, pendingAttachments.length > 0 ? pendingAttachments : undefined);
     setValue('');
+    setPendingAttachments([]);
     Keyboard.dismiss();
+  };
+
+  const showAttachmentMenu = () => {
+    if (disabled || isStreaming) return;
+    Alert.alert('Attach photo', 'Pick a source', [
+      {
+        text: 'Take photo',
+        onPress: async () => {
+          const picked = await captureFromCamera();
+          if (picked) setPendingAttachments((prev) => [...prev, picked]);
+        }
+      },
+      {
+        text: 'From library',
+        onPress: async () => {
+          const picked = await pickFromLibrary();
+          if (picked) setPendingAttachments((prev) => [...prev, picked]);
+        }
+      },
+      { text: 'Cancel', style: 'cancel' }
+    ]);
+  };
+
+  const removeAttachment = (uri: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.uri !== uri));
   };
 
   return (
@@ -218,7 +251,67 @@ export const Composer = ({
         />
       ) : null}
 
-      {/* Composer row: $ prompt — textarea — STOP / send arrow */}
+      {pendingAttachments.length > 0 ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: t.spacing.sm,
+            paddingHorizontal: t.spacing.md,
+            paddingTop: t.spacing.sm
+          }}
+        >
+          {pendingAttachments.map((a) => (
+            <Pressable
+              key={a.uri}
+              onPress={() => removeAttachment(a.uri)}
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: t.radii.sm,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: t.colors.border.subtle,
+                position: 'relative'
+              }}
+            >
+              <Image
+                source={{ uri: a.uri }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  right: 2,
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: t.colors.bg.canvas,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: t.colors.border.subtle
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: t.fonts.monoBold,
+                    fontSize: 11,
+                    lineHeight: 12,
+                    color: t.colors.text.primary
+                  }}
+                >
+                  ×
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Composer row: 📷 — $ prompt — textarea — STOP / send arrow */}
       <View
         style={{
           flexDirection: 'row',
@@ -229,6 +322,26 @@ export const Composer = ({
           paddingBottom: 4
         }}
       >
+        <Pressable
+          onPress={showAttachmentMenu}
+          disabled={isStreaming || disabled}
+          hitSlop={8}
+          style={{
+            paddingTop: 6,
+            opacity: isStreaming || disabled ? 0.3 : 1
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: t.fonts.mono,
+              fontSize: 16,
+              color: t.colors.text.tertiary,
+              lineHeight: 22
+            }}
+          >
+            +
+          </Text>
+        </Pressable>
         <Text
           style={{
             fontFamily: t.fonts.mono,
@@ -285,7 +398,10 @@ export const Composer = ({
         ) : (
           <Pressable
             onPress={send}
-            disabled={value.trim().length === 0 || disabled}
+            disabled={
+              (value.trim().length === 0 && pendingAttachments.length === 0) ||
+              disabled
+            }
             style={{
               width: 36,
               height: 36,
@@ -293,7 +409,10 @@ export const Composer = ({
               backgroundColor: t.colors.accent.inverse,
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: value.trim().length === 0 ? 0.3 : 1
+              opacity:
+                value.trim().length === 0 && pendingAttachments.length === 0
+                  ? 0.3
+                  : 1
             }}
           >
             <Text
