@@ -14,7 +14,7 @@ import {
 } from '@/db/conversations';
 import { Project, getProject } from '@/db/projects';
 import { getAllSettings, Settings } from '@/db/settings';
-import { getEngine } from '@/engine';
+import { getEngine, getEngineForModel } from '@/engine';
 import { buildPrompt } from './promptBuilder';
 import { getCatalogEntry } from '@/model/catalog';
 import { modelPath } from '@/model/storage';
@@ -259,7 +259,7 @@ export const useConversation = (conversationId: string) => {
         return;
       }
 
-      const engine = getEngine();
+      const engine = getEngineForModel(desiredModelId);
       // If the engine is loaded with a different model than the skill wants,
       // dispose the current one and load the desired one.
       if (!engine.isReady() || (skill?.model_id && skill.model_id !== settings.active_model_id)) {

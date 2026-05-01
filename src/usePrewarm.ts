@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { getSetting } from '@/db/settings';
 import { modelExists, modelPath } from '@/model/storage';
-import { getEngine } from '@/engine';
+import { getEngineForModel } from '@/engine';
 
 /**
  * Eagerly load the active model on app boot when the user has opted in.
@@ -23,7 +23,7 @@ export const usePrewarm = (): void => {
         const id = await getSetting('active_model_id');
         if (!id) return;
         if (!(await modelExists(id))) return;
-        const engine = getEngine();
+        const engine = getEngineForModel(id);
         if (engine.isReady()) return;
         if (cancelled) return;
         await engine.load(modelPath(id));

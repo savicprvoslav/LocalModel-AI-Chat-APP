@@ -32,7 +32,7 @@ import {
   dedupeAgainstExisting
 } from '@/chat/extractEntities';
 import { listEntities, createEntity } from '@/db/projectEntities';
-import { getEngine } from '@/engine';
+import { getEngine, getEngineForModel } from '@/engine';
 import { modelExists, modelPath } from '@/model/storage';
 import { getCatalogEntry } from '@/model/catalog';
 
@@ -190,8 +190,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     setProposalOpen(true);
     try {
       // Make sure a model is loaded.
-      const engine = getEngine();
-      if (!engine.isReady()) {
+      if (!getEngine().isReady()) {
         const id = await getSetting('active_model_id');
         if (!id || !(await modelExists(id))) {
           Alert.alert('No model', 'Install a model in Settings first.');
@@ -203,7 +202,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
           setProposalOpen(false);
           return;
         }
-        await engine.load(modelPath(id));
+        await getEngineForModel(id).load(modelPath(id));
       }
       const proposed = await extractEntities(messages, { maxTokens: 512 });
       const existing = await listEntities(project.id);

@@ -1,7 +1,14 @@
 import * as FS from 'expo-file-system/legacy';
+import { getCatalogEntry } from './catalog';
 
 export const modelsDir = (): string => `${FS.documentDirectory}models/`;
-export const modelPath = (id: string): string => `${modelsDir()}${id}.gguf`;
+
+const extensionFor = (id: string): string => {
+  const entry = getCatalogEntry(id);
+  return entry?.runtime === 'litert' ? 'task' : 'gguf';
+};
+
+export const modelPath = (id: string): string => `${modelsDir()}${id}.${extensionFor(id)}`;
 
 export const ensureModelsDir = async (): Promise<void> => {
   await FS.makeDirectoryAsync(modelsDir(), { intermediates: true });

@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["MediaPipeLlmModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.mediapipellm.MediaPipeLlmModule"]
+  }
+}
