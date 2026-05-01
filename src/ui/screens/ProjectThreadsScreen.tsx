@@ -10,7 +10,7 @@ import {
   createConversation
 } from '@/db/conversations';
 import { listMessages } from '@/db/messages';
-import { listEntities } from '@/db/projectEntities';
+import { getRag } from '@/integration/rag';
 import { AsciiBlock } from '../components/AsciiBlock';
 
 type Row = {
@@ -50,7 +50,7 @@ export const ProjectThreadsScreen = ({ projectId }: Props) => {
     setProject(p);
     const [convs, ents] = await Promise.all([
       listConversationsByProject(projectId),
-      listEntities(projectId)
+      getRag().listFacts(projectId)
     ]);
     setEntityCount(ents.length);
     const next: Row[] = [];

@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './ui/theme/ThemeProvider';
 import { ErrorBoundary } from './ui/components/ErrorBoundary';
 import { initDb } from './db/db';
+import { initRag } from './integration/rag';
 import { usePrewarm } from './usePrewarm';
 
 type Props = { children: ReactNode };
@@ -13,7 +14,10 @@ export const AppProviders = ({ children }: Props) => {
 
   useEffect(() => {
     initDb()
-      .then(() => setReady(true))
+      .then(() => {
+        initRag();
+        setReady(true);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 

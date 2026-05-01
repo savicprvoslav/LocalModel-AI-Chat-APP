@@ -1,8 +1,9 @@
-import { hashEmbed, cosineSimilarity, HASH_EMBED_DIM } from '../vectors';
+import { hashEmbed, HashEmbedder } from '../embeddings/HashEmbedder';
+import { cosineSimilarity } from '../retrieval/cosine';
 
 describe('hashEmbed', () => {
   it('produces a vector of the configured dimension', () => {
-    expect(hashEmbed('hello world').length).toBe(HASH_EMBED_DIM);
+    expect(hashEmbed('hello world').length).toBe(new HashEmbedder().dim);
   });
 
   it('is deterministic for the same input', () => {
@@ -51,5 +52,19 @@ describe('cosineSimilarity', () => {
 
   it('handles different-length inputs by truncating to the shorter', () => {
     expect(cosineSimilarity([1, 0], [1, 0, 0, 0, 0])).toBe(1);
+  });
+});
+
+describe('HashEmbedder', () => {
+  it('is ready synchronously', () => {
+    const e = new HashEmbedder();
+    expect(e.isReady()).toBe(true);
+  });
+
+  it('embeds via the class API', async () => {
+    const e = new HashEmbedder();
+    await e.load();
+    const v = await e.embed('hello world');
+    expect(v.length).toBe(e.dim);
   });
 });

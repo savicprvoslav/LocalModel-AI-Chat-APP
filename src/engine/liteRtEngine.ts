@@ -5,10 +5,10 @@
  * Same lifecycle contract as `llamaRnEngine` so the two can be swapped via
  * `setEngine`. Picks up `.task` / `.litertlm` model bundles — not GGUF.
  */
-import type { ChatEngine, EmbedResult, GenerationOptions, StreamCallbacks } from './types';
-import { HASH_EMBEDDER_NAME, hashEmbed } from '@/chat/vectors';
+import type { ChatEngine, GenerationOptions, StreamCallbacks } from './types';
+import type { PartialEvent, ErrorEvent } from '../../modules/react-native-mediapipe-llm/src/MediaPipeLlm';
 
-type MediaPipeLlmModule = typeof import('react-native-mediapipe-llm');
+type MediaPipeLlmModule = typeof import('../../modules/react-native-mediapipe-llm');
 
 let _mod: MediaPipeLlmModule | null = null;
 const getMod = (): MediaPipeLlmModule => {
@@ -60,7 +60,7 @@ export const liteRtEngine: ChatEngine = {
     let aborted = false;
     let tokenCount = 0;
 
-    const partialSub = mod.addPartialListener((event) => {
+    const partialSub = mod.addPartialListener((event: PartialEvent) => {
       if (event.sessionId !== id) return;
       if (aborted) return;
       if (event.done) {
@@ -74,7 +74,7 @@ export const liteRtEngine: ChatEngine = {
       }
     });
 
-    const errorSub = mod.addErrorListener((event) => {
+    const errorSub = mod.addErrorListener((event: ErrorEvent) => {
       if (event.sessionId !== id) return;
       if (aborted) return;
       cb.onError(new Error(event.message));
@@ -105,10 +105,6 @@ export const liteRtEngine: ChatEngine = {
         cleanup();
       }
     }
-  },
-
-  async embed(text: string): Promise<EmbedResult> {
-    return { vector: hashEmbed(text), embedder: HASH_EMBEDDER_NAME };
   },
 
   getContextLength: () => CONTEXT_LEN

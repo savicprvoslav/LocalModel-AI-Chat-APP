@@ -19,10 +19,9 @@ import { buildPrompt } from './promptBuilder';
 import { getCatalogEntry } from '@/model/catalog';
 import { modelPath } from '@/model/storage';
 import { Persona, getPersona, getDefaultPersona } from '@/db/personas';
-import { listEntities } from '@/db/projectEntities';
 import { getSkill } from '@/db/skills';
-import { upsertEmbedding } from '@/db/embeddings';
-import { retrieveRelevant, RelevantSnippet } from './retrieve';
+import { getRag } from '@/integration/rag';
+import type { Snippet } from '@/rag';
 import {
   enabledTools,
   findTool,
@@ -33,27 +32,6 @@ import {
 import type { FinishReason } from '@/engine/types';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
-
-/**
- * Embed and persist a message vector. Failures are swallowed — embeddings
- * are an enhancement, not a hard requirement; the message itself is already
- * persisted by the caller.
- */
-const embedAndStore = async (
-  messageId: string,
-  text: string
-): Promise<void> => {
-  try {
-    if (!text.trim()) return;
-    const engine = getEngine();
-    if (!engine.isReady()) return;
-    const { vector, embedder } = await engine.embed(text);
-    if (!vector || vector.length === 0) return;
-    await upsertEmbedding({ message_id: messageId, vector, embedder });
-  } catch {
-    // Best-effort — see doc above.
-  }
-};
 
 export type RetrievalSnippetMeta = {
   score: number;
@@ -133,7 +111,8 @@ export const useConversation = (conversationId: string) => {
       const persona = conv.persona_id
         ? await getPersona(conv.persona_id)
         : await getDefaultPersona();
-      const entities = project ? await listEntities(project.id) : [];
+      const rag = getRag();
+      const entities = project ? await rag.listFacts(project.id) : [];
       const history = await listMessages(conversationId);
 
       // Auto-title from first user message if conversation is still using
@@ -163,7 +142,7 @@ export const useConversation = (conversationId: string) => {
         content: text
       });
       // Best-effort embed of the user turn — runs in parallel with model warmup.
-      void embedAndStore(userMsg.id, text);
+      void rag.indexMessage({ messageId: userMsg.id, content: text });
       // model_id is set after we've resolved the desired model below.
       const asstMsg = await appendMessage({
         conversation_id: conv.id,
@@ -189,21 +168,20 @@ export const useConversation = (conversationId: string) => {
       // --- Retrieval (best-effort) -------------------------------------------
       // Pull relevant snippets from prior conversations. Errors are swallowed
       // — retrieval is an enhancement, not a hard requirement.
-      let snippets: RelevantSnippet[] = [];
+      let snippets: Snippet[] = [];
       if (settings.retrieval_enabled) {
         try {
-          const retrieveOpts: Parameters<typeof retrieveRelevant>[1] = {
+          snippets = await rag.retrieve(text, {
             excludeConversationId: conv.id,
             projectScope: project ? project.id : null,
             limit: settings.retrieval_k
-          };
-          snippets = await retrieveRelevant(text, retrieveOpts);
+          });
           if (snippets.length > 0) {
             const snippetsView: RetrievalSnippetMeta[] = snippets.map((sn) => {
-              const projectSlug = sn.project_id ? '~/proj' : '~/inbox';
+              const projectSlug = sn.projectId ? '~/proj' : '~/inbox';
               return {
                 score: sn.score,
-                source: `${projectSlug}/${sn.conversation_title
+                source: `${projectSlug}/${sn.conversationTitle
                   .toLowerCase()
                   .replace(/\s+/g, '-')
                   .slice(0, 24)}`,
@@ -236,11 +214,11 @@ export const useConversation = (conversationId: string) => {
             description: e.description
           })),
           relevantSnippets: snippets.map((s) => {
-            const projectSlug = s.project_id
+            const projectSlug = s.projectId
               ? '~/' // we don't have project name here cheaply; the conversation title is enough
               : '~/inbox/';
             return {
-              source: `${projectSlug}${s.conversation_title.toLowerCase().replace(/\s+/g, '-').slice(0, 28)}`,
+              source: `${projectSlug}${s.conversationTitle.toLowerCase().replace(/\s+/g, '-').slice(0, 28)}`,
               excerpt: s.excerpt
             };
           }),
@@ -280,11 +258,15 @@ export const useConversation = (conversationId: string) => {
         if (engine.isReady()) await engine.dispose();
 
         // Synthetic warming stages — published one-by-one so the UI can
-        // animate them. The actual `engine.load()` is one opaque call;
-        // we mark `mmap` and `kv` as the load runs, then `kern` and `sys`
-        // after it returns. Timings reflect what cold-loading a 3 B model
-        // tends to look like on a recent iPhone (~2–4 s mmap, <1 s kv,
-        // ~600 ms metal kernels, instant prompt bind).
+        // animate them. The actual `engine.load()` is one opaque call; we
+        // tick `mmap` shortly after start (file open is fast), then attribute
+        // the rest of the wall-clock load to `kv` (the bulk of cold-load time
+        // is kv-cache + warmup inside llama.rn). `kern` and `sys` are
+        // post-load polish ticks.
+        //
+        // The WarmingLog component animates a spinner on the active stage and
+        // shows live elapsed seconds — without that, the user would see a
+        // static `◐` for ~30 s on large models and assume the app froze.
         const stages: WarmingStageView[] = [
           { key: 'mmap', label: `mmap weights · ${entry.displayName}`, state: 'pend' },
           {
@@ -311,17 +293,25 @@ export const useConversation = (conversationId: string) => {
         };
 
         const loadStarted = Date.now();
+        let mmapTickedAt: number | null = null;
         // Tick mmap a hair after starting so the user sees movement.
-        const mmapTimer = setTimeout(() => tickStage(0, Date.now() - loadStarted), 350);
-        // Tick kv as soon as load resolves (real upper bound on alloc).
+        const mmapTimer = setTimeout(() => {
+          mmapTickedAt = Date.now();
+          tickStage(0, mmapTickedAt - loadStarted);
+        }, 300);
         try {
           await engine.load(modelPath(desiredModelId));
           clearTimeout(mmapTimer);
-          // Whatever order they completed in, surface them now.
-          const totalMs = Date.now() - loadStarted;
-          tickStage(0, Math.round(totalMs * 0.6));
-          tickStage(1, Math.round(totalMs * 0.2));
-          // The next two are post-load synthetic ticks for visual polish.
+          const loadDoneAt = Date.now();
+          // If load finished before the mmap timer fired (very fast load),
+          // tick mmap now with actual elapsed.
+          if (mmapTickedAt === null) {
+            mmapTickedAt = loadDoneAt;
+            tickStage(0, loadDoneAt - loadStarted);
+          }
+          // kv gets the bulk of the wait — this is the long stage on cold loads.
+          tickStage(1, loadDoneAt - mmapTickedAt);
+          // Post-load synthetic ticks for visual polish.
           await new Promise((r) => setTimeout(r, 220));
           tickStage(2, 220);
           await new Promise((r) => setTimeout(r, 90));
@@ -360,8 +350,6 @@ export const useConversation = (conversationId: string) => {
         }));
       };
 
-      // Run one round of model generation, accumulating into `buffer`.
-      // Resolves with the round's tokenCount/finishReason, or an error.
       const runStreamRound = (
         roundPrompt: string
       ): Promise<
@@ -489,7 +477,7 @@ export const useConversation = (conversationId: string) => {
       });
       await touchConversation(conv.id);
       // Embed the assistant turn so future retrieval can surface it.
-      void embedAndStore(asstMsg.id, buffer);
+      void rag.indexMessage({ messageId: asstMsg.id, content: buffer });
       setState((s) => ({
         ...s,
         status: 'idle',

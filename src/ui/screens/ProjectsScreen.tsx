@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { Project, listProjects, createProject } from '@/db/projects';
 import { listConversationsByProject } from '@/db/conversations';
-import { listEntities } from '@/db/projectEntities';
+import { getRag } from '@/integration/rag';
 import { PromptModal } from '../components/PromptModal';
 import { Numeral } from '../components/Numeral';
 import { SectionHeader } from '../components/SectionHeader';
@@ -29,7 +29,7 @@ export const ProjectsScreen = () => {
     for (const p of projects) {
       const [convs, ents] = await Promise.all([
         listConversationsByProject(p.id),
-        listEntities(p.id)
+        getRag().listFacts(p.id)
       ]);
       out.push({ project: p, conversationCount: convs.length, entityCount: ents.length });
     }

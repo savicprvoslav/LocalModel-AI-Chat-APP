@@ -13,14 +13,10 @@ import {
 import { downloadModel } from '@/model/download';
 import { getAllSettings, setSetting, Settings } from '@/db/settings';
 import { getEngine } from '@/engine';
+import { getDeviceRamGB } from '@/device';
 import { useThemePref } from '../theme/ThemeProvider';
 import type { Theme as ThemePref } from '@/db/settings';
-import {
-  embeddingCoverage,
-  listUnembeddedMessageIds,
-  upsertEmbedding
-} from '@/db/embeddings';
-import { hashEmbed, HASH_EMBEDDER_NAME } from '@/chat/vectors';
+import { getRag } from '@/integration/rag';
 import { SectionHeader } from '../components/SectionHeader';
 import { BigSlider } from '../components/BigSlider';
 import { Bar, Ticks } from '../components/Bar';
@@ -39,6 +35,8 @@ export const SettingsScreen = () => {
   const [used, setUsed] = useState(0);
   const [free, setFree] = useState(0);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [dlProgress, setDlProgress] = useState(0);
+  const [deviceRamGB, setDeviceRamGB] = useState<number | null>(null);
   const [coverage, setCoverage] = useState<{ embedded: number; total: number }>({
     embedded: 0,
     total: 0
@@ -46,7 +44,7 @@ export const SettingsScreen = () => {
   const [reindexing, setReindexing] = useState(false);
 
   const refreshCoverage = async () => {
-    setCoverage(await embeddingCoverage());
+    setCoverage(await getRag().coverage());
   };
 
   const reload = async () => {
@@ -57,6 +55,7 @@ export const SettingsScreen = () => {
     setInstalled(inst);
     setUsed(await totalModelBytes(Object.keys(inst).filter((k) => inst[k])));
     setFree(await freeDiskBytes());
+    setDeviceRamGB(await getDeviceRamGB());
     await refreshCoverage();
   };
 
@@ -67,27 +66,17 @@ export const SettingsScreen = () => {
   const runReindex = async () => {
     setReindexing(true);
     try {
-      let totalDone = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const batch = await listUnembeddedMessageIds(200);
-        if (batch.length === 0) break;
-        for (const m of batch) {
-          if (!m.content || !m.content.trim()) continue;
-          await upsertEmbedding({
-            message_id: m.id,
-            vector: hashEmbed(m.content),
-            embedder: HASH_EMBEDDER_NAME
-          });
-          totalDone++;
-        }
-        await refreshCoverage();
-      }
+      const before = await getRag().coverage();
+      const after = await getRag().runBackfill({
+        batchSize: 50,
+        onProgress: () => void refreshCoverage()
+      });
+      const added = Math.max(0, after.embedded - before.embedded);
       Alert.alert(
         'Re-index complete',
-        totalDone === 0
+        added === 0
           ? 'Everything was already indexed.'
-          : `Embedded ${totalDone} message${totalDone === 1 ? '' : 's'}.`
+          : `Embedded ${added} message${added === 1 ? '' : 's'}.`
       );
     } catch (e) {
       Alert.alert('Re-index failed', e instanceof Error ? e.message : String(e));
@@ -107,8 +96,9 @@ export const SettingsScreen = () => {
     const entry = CATALOG.find((e) => e.id === id);
     if (!entry) return;
     setDownloading(id);
+    setDlProgress(0);
     try {
-      await downloadModel(entry, { skipShaCheck: true });
+      await downloadModel(entry, { onProgress: setDlProgress, skipShaCheck: true });
       await reload();
     } catch (e) {
       Alert.alert('Download failed', e instanceof Error ? e.message : String(e));
@@ -118,12 +108,29 @@ export const SettingsScreen = () => {
   };
 
   const confirmDelete = (id: string) => {
-    Alert.alert('Delete model?', 'Frees disk space.', [
+    const isActiveDeletion = settings?.active_model_id === id;
+    const message = isActiveDeletion
+      ? 'This is the active model. Another installed model will be set active in its place.'
+      : 'Frees disk space.';
+    Alert.alert('Delete model?', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          if (isActiveDeletion) {
+            // Drop the engine before unlinking the on-disk file so the next
+            // load starts cold from the new active model.
+            try {
+              await getEngine().dispose();
+            } catch {
+              // engine may not be loaded; ignore
+            }
+            const fallback =
+              Object.keys(installed).find((k) => installed[k] && k !== id) ?? null;
+            await setSetting('active_model_id', fallback);
+            setSettings((s) => (s ? { ...s, active_model_id: fallback } : s));
+          }
           await fsDeleteModel(id);
           await reload();
         }
@@ -235,7 +242,7 @@ export const SettingsScreen = () => {
         {/* MODELS */}
         <SectionHeader
           label="models"
-          comment={`${Object.values(installed).filter(Boolean).length} installed · ${fmtGB1(used)} / ${fmtGB1(totalBudget)} GB`}
+          comment={`${Object.values(installed).filter(Boolean).length} installed · ${fmtGB1(used)} / ${fmtGB1(totalBudget)} GB · ${deviceRamGB ?? '?'} GB device RAM`}
         />
         <View style={{ marginBottom: 4 }}>
           <Bar fraction={usedFraction} />
@@ -253,6 +260,8 @@ export const SettingsScreen = () => {
         {CATALOG.map((e, i) => {
           const isInstalled = !!installed[e.id];
           const isActive = settings.active_model_id === e.id;
+          const tooBigForDevice =
+            deviceRamGB !== null && e.minRamGB > deviceRamGB;
           return (
             <View
               key={e.id}
@@ -305,21 +314,36 @@ export const SettingsScreen = () => {
                 </Text>
                 <View style={{ flexDirection: 'row', gap: t.spacing.lg }}>
                   {!isInstalled ? (
+                    downloading === e.id ? (
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ ...t.type.label, color: t.colors.text.primary, marginBottom: 6 }}>
+                          {`▸ DOWNLOADING ${Math.round(dlProgress * 100)}% · ${fmtGB1(e.sizeBytes * dlProgress)} / ${fmtGB1(e.sizeBytes)} GB`}
+                        </Text>
+                        <Bar fraction={dlProgress} />
+                      </View>
+                    ) : tooBigForDevice ? (
+                      <Text style={{ ...t.type.label, color: t.colors.text.quiet }}>
+                        {`✕ NEEDS ${e.minRamGB} GB · YOU HAVE ${deviceRamGB} GB`}
+                      </Text>
+                    ) : (
                     <Pressable
                       onPress={() => startDownload(e.id)}
                       disabled={downloading !== null}
                     >
                       <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
-                        {downloading === e.id ? '▸ DOWNLOADING…' : '↓ DOWNLOAD'}
+                        ↓ DOWNLOAD
                       </Text>
                     </Pressable>
-                  ) : isActive ? null : (
+                    )
+                  ) : (
                     <>
-                      <Pressable onPress={() => setActive(e.id)}>
-                        <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
-                          SET ACTIVE
-                        </Text>
-                      </Pressable>
+                      {!isActive ? (
+                        <Pressable onPress={() => setActive(e.id)}>
+                          <Text style={{ ...t.type.label, color: t.colors.text.primary }}>
+                            SET ACTIVE
+                          </Text>
+                        </Pressable>
+                      ) : null}
                       <Pressable onPress={() => confirmDelete(e.id)}>
                         <Text style={{ ...t.type.label, color: t.colors.accent.warm }}>
                           DELETE

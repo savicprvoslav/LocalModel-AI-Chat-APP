@@ -56,6 +56,7 @@ npm start                                # open Metro bundler
 # To run in iOS simulator with native modules:
 npx expo prebuild --clean
 npx expo run:ios
+npx expo run:ios --configuration Release --device
 
 # To run in Android emulator with native modules:
 npx expo run:android

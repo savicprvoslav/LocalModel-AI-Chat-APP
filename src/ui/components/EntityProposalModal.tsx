@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme } from '../theme/useTheme';
-import type { ProposedEntity } from '@/chat/extractEntities';
+import type { ProposedFact as ProposedEntity } from '@/rag';
 
 type Props = {
   visible: boolean;

@@ -5,8 +5,7 @@
  * load + inference only works in a development build, not Expo Go and not
  * Jest. Tests live against `fakeEngine` instead.
  */
-import type { ChatEngine, EmbedResult, GenerationOptions, StreamCallbacks } from './types';
-import { HASH_EMBEDDER_NAME, hashEmbed } from '@/chat/vectors';
+import type { ChatEngine, GenerationOptions, StreamCallbacks } from './types';
 
 // Lazy-load llama.rn so the JS layer compiles even when the native module
 // isn't built (e.g., when running in Expo Go or Jest).
@@ -121,21 +120,6 @@ export const llamaRnEngine: ChatEngine = {
     } finally {
       options.signal?.removeEventListener('abort', onAbort);
     }
-  },
-
-  /**
-   * Embedding via the chat model is incompatible with chat mode in llama.rn —
-   * the context must be initialized with `embedding: true` and the embedding
-   * head needs an aligned tokenizer. Rather than ship a second model and
-   * coordinate two contexts, we fall back to feature-hash embeddings.
-   *
-   * To upgrade later: replace this body with either (a) a separate llama
-   * context loaded with `embedding: true` and a small embedding model, or
-   * (b) onnxruntime-react-native running MiniLM. Keep the return shape and
-   * the call sites are unaffected.
-   */
-  async embed(text: string): Promise<EmbedResult> {
-    return { vector: hashEmbed(text), embedder: HASH_EMBEDDER_NAME };
   },
 
   getContextLength: () => 4096

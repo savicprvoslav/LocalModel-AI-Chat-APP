@@ -26,12 +26,8 @@ import { updateConversation, deleteConversation } from '@/db/conversations';
 import { clearMessagesForConversation } from '@/db/messages';
 import { PromptModal } from '../components/PromptModal';
 import { EntityProposalModal } from '../components/EntityProposalModal';
-import {
-  ProposedEntity,
-  extractEntities,
-  dedupeAgainstExisting
-} from '@/chat/extractEntities';
-import { listEntities, createEntity } from '@/db/projectEntities';
+import { getRag } from '@/integration/rag';
+import type { ProposedFact as ProposedEntity } from '@/rag';
 import { getEngine, getEngineForModel } from '@/engine';
 import { modelExists, modelPath } from '@/model/storage';
 import { getCatalogEntry } from '@/model/catalog';
@@ -204,9 +200,11 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
         }
         await getEngineForModel(id).load(modelPath(id));
       }
-      const proposed = await extractEntities(messages, { maxTokens: 512 });
-      const existing = await listEntities(project.id);
-      setProposals(dedupeAgainstExisting(proposed, existing));
+      const proposed = await getRag().proposeFactsFromConversation(
+        messages,
+        project.id
+      );
+      setProposals(proposed);
     } catch (e) {
       Alert.alert('Extraction failed', e instanceof Error ? e.message : String(e));
       setProposalOpen(false);
@@ -218,9 +216,10 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
   const handleProposalAccept = async (selected: ProposedEntity[]) => {
     setProposalOpen(false);
     if (!project || selected.length === 0) return;
+    const rag = getRag();
     for (const p of selected) {
-      await createEntity({
-        project_id: project.id,
+      await rag.saveFact({
+        projectId: project.id,
         name: p.name,
         description: p.description
       });

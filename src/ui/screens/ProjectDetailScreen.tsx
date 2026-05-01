@@ -4,13 +4,8 @@ import { router } from 'expo-router';
 import { useTheme } from '../theme/useTheme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Project, getProject, updateProject, deleteProject } from '@/db/projects';
-import {
-  ProjectEntity,
-  listEntities,
-  createEntity,
-  updateEntity,
-  deleteEntity
-} from '@/db/projectEntities';
+import { getRag } from '@/integration/rag';
+import type { Fact } from '@/rag';
 
 type Props = { projectId: string };
 
@@ -19,12 +14,12 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [entities, setEntities] = useState<ProjectEntity[]>([]);
+  const [entities, setEntities] = useState<Fact[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entityTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const reloadEntities = async () => {
-    setEntities(await listEntities(projectId));
+    setEntities(await getRag().listFacts(projectId));
   };
 
   useEffect(() => {
@@ -80,7 +75,7 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
     const existing = entityTimers.current.get(id);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
-      void updateEntity(id, next);
+      void getRag().updateFact(id, next);
     }, 500);
     entityTimers.current.set(id, timer);
   };
@@ -93,7 +88,7 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
   };
 
   const onAddEntity = async () => {
-    await createEntity({ project_id: projectId, name: '', description: '' });
+    await getRag().saveFact({ projectId, name: '', description: '' });
     await reloadEntities();
   };
 
@@ -104,7 +99,7 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteEntity(id);
+          await getRag().deleteFact(id);
           await reloadEntities();
         }
       }

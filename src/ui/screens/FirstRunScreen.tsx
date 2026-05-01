@@ -43,6 +43,7 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
 
   const ramGB = detectedRamGB ?? 8;
   const entry: ModelCatalogEntry = CATALOG.find((e) => e.id === selected) ?? CATALOG[1]!;
+  const selectedTooBig = entry.minRamGB > ramGB;
 
   const seedWelcomeIfFirstRun = async (): Promise<void> => {
     const existing = await listConversations();
@@ -281,15 +282,18 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
       >
         <Pressable
           onPress={start}
-          disabled={downloading}
+          disabled={downloading || selectedTooBig}
           style={{
             position: 'relative',
             overflow: 'hidden',
             paddingVertical: t.spacing.lg - 2,
-            backgroundColor: t.colors.accent.inverse,
+            backgroundColor: selectedTooBig
+              ? t.colors.bg.subtle
+              : t.colors.accent.inverse,
             borderRadius: t.radii.sm,
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            opacity: selectedTooBig ? 0.7 : 1
           }}
         >
           {/* Progress fill animates inside the button while downloading */}
@@ -305,10 +309,17 @@ export const FirstRunScreen = ({ onComplete, deviceRamGB }: Props) => {
               }}
             />
           ) : null}
-          <Text style={{ ...t.type.label, color: t.colors.bg.canvas }}>
+          <Text
+            style={{
+              ...t.type.label,
+              color: selectedTooBig ? t.colors.accent.warm : t.colors.bg.canvas
+            }}
+          >
             {downloading
               ? `▸ DOWNLOADING ${Math.round(progress * 100)}% · ${fmtGB(entry.sizeBytes * progress)} / ${fmtGB(entry.sizeBytes)}`
-              : `↓ INSTALL ${entry.displayName.toUpperCase()}`}
+              : selectedTooBig
+                ? `✕ NEEDS ${entry.minRamGB} GB RAM · YOU HAVE ${ramGB} GB — PICK A SMALLER MODEL`
+                : `↓ INSTALL ${entry.displayName.toUpperCase()}`}
           </Text>
         </Pressable>
 
