@@ -70,6 +70,21 @@ export const CATALOG: ModelCatalogEntry[] = [
     runtime: 'llama-rn'
   },
   {
+    id: 'phi-4-mini-instruct-q4',
+    tier: 'standard',
+    displayName: 'Phi-4-mini Instruct (Q4_K_M)',
+    url: 'https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF/resolve/main/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf',
+    sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
+    sizeBytes: 2_490_000_000,
+    // 128K native context, but we cap at 4096 like the rest until we
+    // surface a per-conversation context override.
+    contextLen: 4096,
+    minRamGB: 6,
+    recommendedRamGB: 8,
+    goodFor: 'Microsoft Phi-4-mini — strong math/reasoning, 128K context, function calling, MIT license',
+    runtime: 'llama-rn'
+  },
+  {
     id: 'gemma-4-e2b-it-q4',
     tier: 'standard',
     displayName: 'Gemma 4 E2B (Q4_K_M)',

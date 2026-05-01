@@ -1,6 +1,7 @@
 import type { Message } from '@/db/messages';
 import type { Tool } from '@/tools/types';
 import { renderToolsBlock } from '@/tools/systemPrompt';
+import { BASE_SYSTEM_PROMPT } from './baseSystemPrompt';
 
 export type ProjectEntityRef = { name: string; description: string };
 
@@ -11,6 +12,12 @@ export type RetrievedSnippet = {
 };
 
 export type BuildPromptArgs = {
+  /**
+   * Base layer that runs underneath every persona/skill. Set to '' to
+   * suppress (e.g. for tests or for personas that need a totally clean
+   * slate). Defaults to BASE_SYSTEM_PROMPT when omitted.
+   */
+  baseSystemPrompt?: string;
   /**
    * The active persona's system prompt. Defines who the assistant is.
    * Falls back to '' if no persona is set.
@@ -73,6 +80,8 @@ const composeRetrievalBlock = (snippets: RetrievedSnippet[] | undefined): string
 
 const composeSystem = (a: BuildPromptArgs): string => {
   const parts: string[] = [];
+  const base = a.baseSystemPrompt ?? BASE_SYSTEM_PROMPT;
+  if (base.trim()) parts.push(base.trim());
   if (a.personaSystemPrompt.trim()) parts.push(a.personaSystemPrompt.trim());
   const projectBlock = composeProjectBlock(a.projectNotes, a.projectEntities);
   if (projectBlock) parts.push(projectBlock);

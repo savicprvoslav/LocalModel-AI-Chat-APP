@@ -99,6 +99,7 @@ CDN:
 | `qwen3-1.7b-q4` | bartowski/Qwen_Qwen3-1.7B-GGUF (HF) | not yet mirrored |
 | `qwen3-4b-q4` | bartowski/Qwen_Qwen3-4B-GGUF (HF) | not yet mirrored |
 | `qwen3-8b-q4` | bartowski/Qwen_Qwen3-8B-GGUF (HF) | not yet mirrored |
+| `phi-4-mini-instruct-q4` | bartowski/microsoft_Phi-4-mini-instruct-GGUF (HF) | not yet mirrored — MIT license |
 | `gemma-4-e2b-it-q4` | bartowski/google_gemma-4-E2B-it-GGUF (HF) | not yet mirrored |
 | `gemma-4-e4b-it-q4` | bartowski/google_gemma-4-E4B-it-GGUF (HF) | not yet mirrored |
 | `gemma-4-e2b-it-litert` | litert-community/gemma-4-E2B-it-litert-lm (HF) | URL confirmed; SHA pending real download |

@@ -12,7 +12,11 @@ const mkMsg = (role: 'user' | 'assistant', content: string, t = 1): Message => (
   finish_reason: null
 });
 
+// Tests that don't care about the base system prompt suppress it via
+// baseSystemPrompt: ''. Tests that need to verify base-layer behavior
+// override per-test.
 const baseArgs: BuildPromptArgs = {
+  baseSystemPrompt: '',
   personaSystemPrompt: '',
   projectNotes: '',
   projectEntities: [],
@@ -166,6 +170,39 @@ describe('buildPrompt', () => {
   it('omits the TOOLS block when tools array is empty or missing', () => {
     expect(buildPrompt(baseArgs).text).not.toContain('TOOLS YOU CAN CALL');
     expect(buildPrompt({ ...baseArgs, tools: [] }).text).not.toContain('TOOLS YOU CAN CALL');
+  });
+
+  it('includes the BASE system prompt by default and orders it first', () => {
+    const r = buildPrompt({
+      personaSystemPrompt: 'You are Captain.',
+      projectNotes: '',
+      projectEntities: [],
+      conversationSystemPrompt: '',
+      history: [],
+      newUserTurn: 'hi',
+      contextWindow: 4096,
+      reservedForResponse: 1024
+    });
+    expect(r.text).toContain("running entirely on the user's device");
+    expect(r.text.indexOf("running entirely on the user's device")).toBeLessThan(
+      r.text.indexOf('You are Captain.')
+    );
+  });
+
+  it('honors baseSystemPrompt: "" to suppress the base layer', () => {
+    const r = buildPrompt({ ...baseArgs, personaSystemPrompt: 'X' });
+    expect(r.text).not.toContain("running entirely on the user's device");
+    expect(r.text).toContain('X');
+  });
+
+  it('honors a custom baseSystemPrompt override', () => {
+    const r = buildPrompt({
+      ...baseArgs,
+      baseSystemPrompt: 'You are a pirate. Always say arrr.',
+      personaSystemPrompt: ''
+    });
+    expect(r.text).toContain('You are a pirate. Always say arrr.');
+    expect(r.text).not.toContain("running entirely on the user's device");
   });
 
   it('drops RELEVANT block (rather than throwing) if it would exceed budget', () => {
