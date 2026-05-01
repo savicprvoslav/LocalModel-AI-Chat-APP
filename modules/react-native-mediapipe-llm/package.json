@@ -1,0 +1,10 @@
+{
+  "name": "react-native-mediapipe-llm",
+  "version": "0.1.0",
+  "description": "Expo native module wrapping Google's MediaPipe LLM Inference (LiteRT-LM) runtime for on-device LLMs",
+  "main": "index.ts",
+  "types": "index.ts",
+  "private": true,
+  "license": "Apache-2.0",
+  "keywords": ["expo", "react-native", "mediapipe", "litert", "gemma", "llm"]
+}
