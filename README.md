@@ -23,7 +23,8 @@ The full JavaScript/TypeScript layer is implemented and tested:
 - **Error boundary** at the root — no more red boxes
 - Theme system (warm-dark hero + warm-light adapt), typography, all visual components
 - Markdown rendering with code blocks, blinking streaming cursor, status-line states (warming/streaming/error/ctxFull)
-- **59 tests passing** across engine, db, model, chat, and search layers
+- **AI tools**: calculator, current time, search across past chats, and an opt-in DuckDuckGo web search. Off by default; configured in Settings → Tools. The model emits a `<tool_call>` block, the app runs it locally, and feeds the result back for a second pass.
+- **117 tests passing** across engine, db, model, chat, tools, and search layers
 
 ## What still needs you
 
@@ -102,6 +103,7 @@ app/                      Expo Router routes (file-based)
 
 src/
   engine/                 ChatEngine interface + fakeEngine + llamaRnEngine
+  tools/                  Tool registry, parser, and built-in tools
   db/
     schema.ts             v3 schema + incremental migrations
     db.ts                 connection, init, in-memory test DB
@@ -163,5 +165,5 @@ Pure logic. Component tests are intentionally skipped for v1 (covered by the man
 ## Privacy
 
 - No analytics, no crash reporting that ships content. Crash counters okay; message text never.
-- The only outbound HTTP call is downloading a GGUF model from Hugging Face. After that, the app makes zero network calls.
+- The only outbound HTTP calls are (a) downloading a GGUF model from Hugging Face, and (b) — only if you turn on the optional **Web search** tool — DuckDuckGo's instant-answer API. Tools are off by default and the master gate has to be flipped before any tool runs.
 - "WIPE ALL DATA" in Settings deletes installed models + clears settings. The SQLite DB is small enough that wiping the app reinstalls cleanly.

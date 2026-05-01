@@ -1,4 +1,6 @@
 import type { Message } from '@/db/messages';
+import type { Tool } from '@/tools/types';
+import { renderToolsBlock } from '@/tools/systemPrompt';
 
 export type ProjectEntityRef = { name: string; description: string };
 
@@ -19,6 +21,8 @@ export type BuildPromptArgs = {
   projectEntities: ProjectEntityRef[];
   /** Snippets retrieved from past conversations relevant to the new user turn. */
   relevantSnippets?: RetrievedSnippet[];
+  /** Tools the model is allowed to invoke. Pass [] to suppress the TOOLS block. */
+  tools?: Tool[];
   /** Conversation-specific system prompt (set by skill or by user override). */
   conversationSystemPrompt: string;
   history: Message[];
@@ -74,6 +78,8 @@ const composeSystem = (a: BuildPromptArgs): string => {
   if (projectBlock) parts.push(projectBlock);
   const retrievalBlock = composeRetrievalBlock(a.relevantSnippets);
   if (retrievalBlock) parts.push(retrievalBlock);
+  const toolsBlock = a.tools && a.tools.length > 0 ? renderToolsBlock(a.tools) : '';
+  if (toolsBlock) parts.push(toolsBlock);
   if (a.conversationSystemPrompt.trim()) parts.push(a.conversationSystemPrompt.trim());
   return parts.join('\n\n');
 };

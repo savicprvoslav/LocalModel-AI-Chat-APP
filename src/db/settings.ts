@@ -2,6 +2,10 @@ import { getDb } from './db';
 
 export type Theme = 'system' | 'light' | 'dark';
 
+/** Per-tool on/off flags keyed by Tool.id. Missing keys take a sensible
+ *  default: local tools on, network tools off. */
+export type ToolsPerToolMap = Record<string, boolean>;
+
 export type Settings = {
   active_model_id: string | null;
   temperature: number;
@@ -16,6 +20,15 @@ export type Settings = {
   retrieval_enabled: boolean;
   /** Max snippets to inject per send. */
   retrieval_k: number;
+  /** Master switch for AI tools (calculator, web search, etc.). Off by
+   *  default — turning it on advertises the registered tools to the model
+   *  in the system prompt. */
+  tools_enabled: boolean;
+  /** Per-tool overrides for {@link ToolsPerToolMap}. */
+  tools_per_tool: ToolsPerToolMap;
+  /** Hard cap on consecutive tool calls per assistant turn — prevents
+   *  runaway loops if the model keeps re-invoking tools. */
+  tools_max_iterations: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,7 +39,10 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   prewarm_on_launch: false,
   retrieval_enabled: true,
-  retrieval_k: 4
+  retrieval_k: 4,
+  tools_enabled: false,
+  tools_per_tool: {},
+  tools_max_iterations: 3
 };
 
 export const getSetting = async <K extends keyof Settings>(key: K): Promise<Settings[K]> => {

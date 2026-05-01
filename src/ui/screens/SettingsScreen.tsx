@@ -388,7 +388,7 @@ export const SettingsScreen = () => {
         />
 
         {/* BEHAVIOR */}
-        <SectionHeader label="behavior" comment="personas · skills · retrieval" topPad />
+        <SectionHeader label="behavior" comment="personas · skills · tools · retrieval" topPad />
         <Pressable
           onPress={() => router.push('/personas')}
           style={{
@@ -437,6 +437,36 @@ export const SettingsScreen = () => {
               <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.primary }}>Skills</Text>
               <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
                 Slash commands like /eli5 and /summarize.
+              </Text>
+            </View>
+            <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
+          </View>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push('/tools')}
+          style={{
+            marginTop: t.spacing.sm,
+            paddingVertical: t.spacing.md,
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: t.colors.border.subtle,
+            borderRadius: t.radii.sm
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <View>
+              <Text style={{ ...t.type.bodyUserV2, color: t.colors.text.primary }}>Tools</Text>
+              <Text style={{ ...t.type.meta, color: t.colors.text.quiet, marginTop: 2 }}>
+                {settings.tools_enabled
+                  ? 'Calculator, web search, and more — pick which.'
+                  : 'Calculator, web search, and more — disabled.'}
               </Text>
             </View>
             <Text style={{ ...t.type.label, color: t.colors.text.tertiary }}>›</Text>
