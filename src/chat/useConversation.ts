@@ -23,6 +23,14 @@ import { listEntities } from '@/db/projectEntities';
 import { getSkill } from '@/db/skills';
 import { upsertEmbedding } from '@/db/embeddings';
 import { retrieveRelevant, RelevantSnippet } from './retrieve';
+import {
+  enabledTools,
+  findTool,
+  formatToolResult,
+  parseToolCalls,
+  runToolCall
+} from '@/tools';
+import type { FinishReason } from '@/engine/types';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
 
@@ -213,6 +221,11 @@ export const useConversation = (conversationId: string) => {
         }
       }
 
+      const activeTools = enabledTools({
+        tools_enabled: settings.tools_enabled,
+        per_tool: settings.tools_per_tool
+      });
+
       let prompt: string;
       try {
         const built = buildPrompt({
@@ -231,6 +244,7 @@ export const useConversation = (conversationId: string) => {
               excerpt: s.excerpt
             };
           }),
+          tools: activeTools,
           conversationSystemPrompt: conv.system_prompt,
           history,
           newUserTurn: text,
@@ -346,73 +360,146 @@ export const useConversation = (conversationId: string) => {
         }));
       };
 
-      await engine.streamCompletion(
-        prompt,
-        {
-          temperature: effectiveTemp,
-          maxTokens: settings.max_tokens,
-          signal: abortRef.current.signal
-        },
-        {
-          onToken: (t) => {
-            buffer += t;
-            count++;
-            if (Date.now() - lastFlush >= 33) {
-              void flush();
+      // Run one round of model generation, accumulating into `buffer`.
+      // Resolves with the round's tokenCount/finishReason, or an error.
+      const runStreamRound = (
+        roundPrompt: string
+      ): Promise<
+        | { ok: true; tokenCount: number; finishReason: FinishReason }
+        | { ok: false; error: Error }
+      > =>
+        new Promise((resolve) => {
+          let settled = false;
+          void engine.streamCompletion(
+            roundPrompt,
+            {
+              temperature: effectiveTemp,
+              maxTokens: settings.max_tokens,
+              signal: abortRef.current!.signal
+            },
+            {
+              onToken: (t) => {
+                buffer += t;
+                count++;
+                if (Date.now() - lastFlush >= 33) void flush();
+              },
+              onDone: ({ tokenCount, finishReason }) => {
+                if (settled) return;
+                settled = true;
+                resolve({ ok: true, tokenCount, finishReason });
+              },
+              onError: (err) => {
+                if (settled) return;
+                settled = true;
+                resolve({ ok: false, error: err });
+              }
             }
-          },
-          onDone: async ({ tokenCount, finishReason }) => {
-            // Clear the transient pre-stream peek now that we have output.
-            setState((s) => ({ ...s, retrievedSnippets: [] }));
-            await updateMessageStream(asstMsg.id, buffer);
-            await finishMessage(asstMsg.id, {
-              finish_reason: finishReason,
-              token_count: tokenCount,
-              model_id: desiredModelId
-            });
-            await touchConversation(conv.id);
-            // Embed the assistant turn so future retrieval can surface it.
-            void embedAndStore(asstMsg.id, buffer);
-            setState((s) => ({
-              ...s,
-              status: 'idle',
-              tokenCount,
-              messages: s.messages.map((m) =>
-                m.id === asstMsg.id
-                  ? { ...m, content: buffer, token_count: tokenCount, finish_reason: finishReason }
-                  : m
-              )
-            }));
-          },
-          onError: async (err) => {
-            await updateMessageStream(asstMsg.id, buffer);
-            if (err.name === 'AbortError') {
-              await finishMessage(asstMsg.id, { finish_reason: 'cancelled' });
-              setState((s) => ({
-                ...s,
-                status: 'cancelled',
-                messages: s.messages.map((m) =>
-                  m.id === asstMsg.id
-                    ? { ...m, content: buffer, finish_reason: 'cancelled' }
-                    : m
-                )
-              }));
-            } else {
-              await finishMessage(asstMsg.id, { finish_reason: 'error' });
-              setState((s) => ({
-                ...s,
-                status: 'error',
-                error: err.message,
-                messages: s.messages.map((m) =>
-                  m.id === asstMsg.id
-                    ? { ...m, content: buffer, finish_reason: 'error' }
-                    : m
-                )
-              }));
-            }
-          }
+          );
+        });
+
+      let currentPrompt = prompt;
+      let lastBufferLen = 0;
+      let iterations = 0;
+      let finalFinish: FinishReason = 'stop';
+      let lastError: Error | null = null;
+
+      // Iteration loop: stream → parse for tool calls → run them → continue.
+      // When tools are disabled (or the model emits none), this runs exactly
+      // once and is identical to the pre-tools flow.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const round = await runStreamRound(currentPrompt);
+        if (!round.ok) {
+          lastError = round.error;
+          break;
         }
-      );
+        finalFinish = round.finishReason;
+
+        const newPortion = buffer.slice(lastBufferLen);
+        const calls = activeTools.length > 0 ? parseToolCalls(newPortion) : [];
+
+        if (calls.length === 0) break;
+        if (iterations >= settings.tools_max_iterations) {
+          // Burn-out: tell the model further tool calls won't be honored
+          // (it'll have to answer with what it already has).
+          buffer += `\n<tool_result>\nERROR: tool-call iteration limit (${settings.tools_max_iterations}) reached. Answer with the information you already have.\n</tool_result>\n`;
+          await flush();
+          break;
+        }
+
+        for (const call of calls) {
+          const tool = findTool(call.name);
+          if (!tool || !activeTools.find((t) => t.id === tool.id)) {
+            const reason = tool
+              ? `tool "${call.name}" is disabled`
+              : `unknown tool "${call.name}"`;
+            buffer = buffer.replace(call.raw, formatToolResult(call.raw, '', reason));
+            continue;
+          }
+          const inv = await runToolCall(tool, call, {
+            ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {})
+          });
+          buffer = buffer.replace(call.raw, formatToolResult(call.raw, inv.result, inv.error));
+        }
+
+        await flush();
+        // Continuation: feed the model the original prompt plus everything
+        // the assistant has produced so far (now containing tool results).
+        currentPrompt = prompt + buffer;
+        lastBufferLen = buffer.length;
+        iterations++;
+      }
+
+      if (lastError) {
+        await updateMessageStream(asstMsg.id, buffer);
+        if (lastError.name === 'AbortError') {
+          await finishMessage(asstMsg.id, { finish_reason: 'cancelled' });
+          setState((s) => ({
+            ...s,
+            status: 'cancelled',
+            messages: s.messages.map((m) =>
+              m.id === asstMsg.id
+                ? { ...m, content: buffer, finish_reason: 'cancelled' }
+                : m
+            )
+          }));
+        } else {
+          await finishMessage(asstMsg.id, { finish_reason: 'error' });
+          setState((s) => ({
+            ...s,
+            status: 'error',
+            error: lastError!.message,
+            messages: s.messages.map((m) =>
+              m.id === asstMsg.id
+                ? { ...m, content: buffer, finish_reason: 'error' }
+                : m
+            )
+          }));
+        }
+        return;
+      }
+
+      // Clear the transient pre-stream peek now that we have output.
+      setState((s) => ({ ...s, retrievedSnippets: [] }));
+      await updateMessageStream(asstMsg.id, buffer);
+      await finishMessage(asstMsg.id, {
+        finish_reason: finalFinish,
+        token_count: count,
+        model_id: desiredModelId
+      });
+      await touchConversation(conv.id);
+      // Embed the assistant turn so future retrieval can surface it.
+      void embedAndStore(asstMsg.id, buffer);
+      setState((s) => ({
+        ...s,
+        status: 'idle',
+        tokenCount: count,
+        messages: s.messages.map((m) =>
+          m.id === asstMsg.id
+            ? { ...m, content: buffer, token_count: count, finish_reason: finalFinish }
+            : m
+        )
+      }));
     },
     [conversationId, state.conversation, state.status]
   );

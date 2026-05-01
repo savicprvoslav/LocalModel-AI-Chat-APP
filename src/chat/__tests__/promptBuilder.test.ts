@@ -137,6 +137,37 @@ describe('buildPrompt', () => {
     expect(r.text).not.toContain('RELEVANT FROM PAST');
   });
 
+  it('includes the TOOLS block when tools are provided', () => {
+    const r = buildPrompt({
+      ...baseArgs,
+      tools: [
+        {
+          id: 'calculator',
+          name: 'Calculator',
+          description: 'Evaluate arithmetic',
+          params: [
+            {
+              name: 'expression',
+              type: 'string',
+              required: true,
+              description: 'Expression to evaluate'
+            }
+          ],
+          network: false,
+          run: async () => ''
+        }
+      ]
+    });
+    expect(r.text).toContain('TOOLS YOU CAN CALL');
+    expect(r.text).toContain('calculator');
+    expect(r.text).toContain('expression');
+  });
+
+  it('omits the TOOLS block when tools array is empty or missing', () => {
+    expect(buildPrompt(baseArgs).text).not.toContain('TOOLS YOU CAN CALL');
+    expect(buildPrompt({ ...baseArgs, tools: [] }).text).not.toContain('TOOLS YOU CAN CALL');
+  });
+
   it('drops RELEVANT block (rather than throwing) if it would exceed budget', () => {
     const long = 'x'.repeat(1500);
     const r = buildPrompt({
