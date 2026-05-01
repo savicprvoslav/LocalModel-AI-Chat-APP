@@ -30,6 +30,11 @@ import {
   runToolCall
 } from '@/tools';
 import type { FinishReason } from '@/engine/types';
+import { randomUUID } from 'expo-crypto';
+import type { PickedImage } from './imagePicker';
+import { copyToAttachments } from './attachmentStorage';
+import { insertAttachment, listAttachments } from '@/db/attachments';
+import type { MessageAttachment } from '@/db/attachments';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
 
@@ -51,6 +56,11 @@ export type UseConversationState = {
   project: Project | null;
   persona: Persona | null;
   messages: Message[];
+  /**
+   * Attachments grouped by message id. Populated on reload + after sends
+   * with attachments. Empty for messages without any.
+   */
+  attachmentsByMessage: Record<string, MessageAttachment[]>;
   status: ConversationStatus;
   error: string | null;
   tokenCount: number;
@@ -69,6 +79,7 @@ export const useConversation = (conversationId: string) => {
     project: null,
     persona: null,
     messages: [],
+    attachmentsByMessage: {},
     status: 'idle',
     error: null,
     tokenCount: 0,
@@ -89,7 +100,23 @@ export const useConversation = (conversationId: string) => {
       : await getDefaultPersona();
     const messages = await listMessages(conversationId);
     if (!settingsRef.current) settingsRef.current = await getAllSettings();
-    setState((s) => ({ ...s, conversation: conv, project, persona, messages }));
+
+    // Pull all attachments for the conversation in one pass and group by
+    // message id. Most conversations have zero — costs nothing then.
+    const attachmentsByMessage: Record<string, MessageAttachment[]> = {};
+    for (const m of messages) {
+      const list = await listAttachments(m.id);
+      if (list.length > 0) attachmentsByMessage[m.id] = list;
+    }
+
+    setState((s) => ({
+      ...s,
+      conversation: conv,
+      project,
+      persona,
+      messages,
+      attachmentsByMessage
+    }));
   }, [conversationId]);
 
   useEffect(() => {
@@ -97,8 +124,9 @@ export const useConversation = (conversationId: string) => {
   }, [reload]);
 
   const send = useCallback(
-    async (text: string) => {
-      if (!text.trim() || state.status === 'streaming' || state.status === 'warming') return;
+    async (text: string, attachments?: PickedImage[]) => {
+      const hasContent = text.trim().length > 0 || (attachments && attachments.length > 0);
+      if (!hasContent || state.status === 'streaming' || state.status === 'warming') return;
       const settings = settingsRef.current ?? (await getAllSettings());
       settingsRef.current = settings;
 
@@ -141,6 +169,39 @@ export const useConversation = (conversationId: string) => {
         role: 'user',
         content: text
       });
+
+      // Persist any attached photos: copy each into our attachments folder
+      // and insert a metadata row keyed to the user message. Failures here
+      // shouldn't kill the send — the text content still goes through.
+      const persistedAttachments: MessageAttachment[] = [];
+      if (attachments && attachments.length > 0) {
+        for (const a of attachments) {
+          try {
+            const tempId = randomUUID();
+            const copied = await copyToAttachments({
+              messageId: userMsg.id,
+              attachmentId: tempId,
+              srcUri: a.uri,
+              mime: a.mimeType
+            });
+            const row = await insertAttachment({
+              message_id: userMsg.id,
+              kind: 'image',
+              uri: copied.uri,
+              mime_type: a.mimeType,
+              width: a.width,
+              height: a.height,
+              size_bytes: copied.sizeBytes,
+              source: a.source
+            });
+            persistedAttachments.push(row);
+          } catch (err) {
+            // best-effort — drop this one and keep going
+            console.warn('attachment persist failed', err);
+          }
+        }
+      }
+
       // Best-effort embed of the user turn — runs in parallel with model warmup.
       void rag.indexMessage({ messageId: userMsg.id, content: text });
       // model_id is set after we've resolved the desired model below.
@@ -153,6 +214,10 @@ export const useConversation = (conversationId: string) => {
       setState((s) => ({
         ...s,
         messages: [...history, userMsg, asstMsg],
+        attachmentsByMessage:
+          persistedAttachments.length > 0
+            ? { ...s.attachmentsByMessage, [userMsg.id]: persistedAttachments }
+            : s.attachmentsByMessage,
         status: 'streaming',
         tokenCount: 0,
         tokRate: 0,
@@ -225,7 +290,14 @@ export const useConversation = (conversationId: string) => {
           tools: activeTools,
           conversationSystemPrompt: conv.system_prompt,
           history,
-          newUserTurn: text,
+          // If the user attached photos, surface that in the prompt. Until a
+          // vision-capable engine is wired up the model can't see pixels —
+          // we tell it so explicitly so it doesn't pretend to and instead
+          // can ask the user for context, or describe what it'd need.
+          newUserTurn:
+            persistedAttachments.length > 0
+              ? `${text}\n\n[The user attached ${persistedAttachments.length} photo${persistedAttachments.length === 1 ? '' : 's'}. The current model cannot read images directly. Acknowledge the attachment and ask the user to describe what's in it, or what they'd like you to help with about it.]`
+              : text,
           contextWindow: settings.context_window,
           reservedForResponse: settings.max_tokens
         });
