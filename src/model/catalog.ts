@@ -34,8 +34,8 @@ export type ModelCatalogEntry = {
  * Compatibility caveat for the GGUF Gemma 4 entries: llama.cpp added support
  * in build b8746. If the bundled `llama.rn` pins a llama.cpp older than that,
  * the model will fail at load time with an unsupported-architecture error.
- * If that happens, either upgrade llama.rn or fall back to a Llama / Qwen
- * entry — or use the LiteRT (`runtime: 'litert'`) variant, which goes through
+ * If that happens, either upgrade llama.rn or fall back to a Qwen 3 entry
+ * — or use the LiteRT (`runtime: 'litert'`) variant, which goes through
  * Google's MediaPipe LLM Inference and is unaffected by llama.cpp version.
  *
  * Gemma 4 weights — both the GGUF and the `.task` bundle — ship under
@@ -44,29 +44,29 @@ export type ModelCatalogEntry = {
  */
 export const CATALOG: ModelCatalogEntry[] = [
   {
-    id: 'llama-3.2-1b-q4',
+    id: 'qwen3-1.7b-q4',
     tier: 'compact',
-    displayName: 'Llama 3.2 1B (Q4_K_M)',
-    url: 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
+    displayName: 'Qwen 3 1.7B (Q4_K_M)',
+    url: 'https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf',
     sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
-    sizeBytes: 770_000_000,
+    sizeBytes: 1_280_000_000,
     contextLen: 4096,
     minRamGB: 4,
     recommendedRamGB: 6,
-    goodFor: 'quick answers, low-end devices, instant warmup',
+    goodFor: 'quick answers, low-end devices, instant warmup — dual-mode reasoning built in',
     runtime: 'llama-rn'
   },
   {
-    id: 'llama-3.2-3b-q4',
+    id: 'qwen3-4b-q4',
     tier: 'standard',
-    displayName: 'Llama 3.2 3B (Q4_K_M)',
-    url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+    displayName: 'Qwen 3 4B (Q4_K_M)',
+    url: 'https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf',
     sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
-    sizeBytes: 2_020_000_000,
+    sizeBytes: 2_500_000_000,
     contextLen: 4096,
     minRamGB: 6,
     recommendedRamGB: 8,
-    goodFor: 'balanced quality and speed, the everyday default',
+    goodFor: 'balanced quality and speed, the everyday default — Qwen 3 thinking/non-thinking modes',
     runtime: 'llama-rn'
   },
   {
@@ -83,12 +83,12 @@ export const CATALOG: ModelCatalogEntry[] = [
     runtime: 'llama-rn'
   },
   {
-    id: 'qwen-2.5-7b-q4',
+    id: 'qwen3-8b-q4',
     tier: 'capable',
-    displayName: 'Qwen 2.5 7B (Q4_K_M)',
-    url: 'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf',
+    displayName: 'Qwen 3 8B (Q4_K_M)',
+    url: 'https://huggingface.co/bartowski/Qwen_Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf',
     sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
-    sizeBytes: 4_680_000_000,
+    sizeBytes: 5_030_000_000,
     contextLen: 4096,
     minRamGB: 10,
     recommendedRamGB: 12,
@@ -112,16 +112,20 @@ export const CATALOG: ModelCatalogEntry[] = [
     id: 'gemma-4-e2b-it-litert',
     tier: 'standard',
     displayName: 'Gemma 4 E2B (LiteRT)',
-    // Google distributes Gemma 4 .task bundles via Kaggle / HF behind a
-    // license click-through. The URL below is the canonical HF resolve path;
-    // before shipping, mirror the file to your own CDN and update both `url`
-    // and `sha256` per docs/MODEL_HOSTING.md.
-    url: 'https://huggingface.co/google/gemma-4-E2B-it-litert/resolve/main/gemma-4-E2B-it.task',
+    // LiteRT-LM bundle hosted by the litert-community on HF — same file
+    // Google's AI Edge Gallery uses on mobile. Mirror to your own CDN and
+    // update both `url` and `sha256` before shipping (see
+    // docs/MODEL_HOSTING.md). Compute sha with:
+    //   sha256sum gemma-4-E2B-it.litertlm
+    url: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm',
     sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
-    sizeBytes: 2_540_000_000,
+    sizeBytes: 2_580_000_000,
     contextLen: 4096,
-    minRamGB: 6,
-    recommendedRamGB: 8,
+    // LiteRT runtime is meaningfully more memory-efficient than llama.cpp:
+    // smaller int4-mix weights, NPU/GPU offload, tighter KV cache. Google's
+    // AI Edge Gallery treats this model as runnable on ~6 GB devices.
+    minRamGB: 4,
+    recommendedRamGB: 6,
     goodFor: 'Gemma 4 via Google\'s LiteRT runtime — uses iOS Core ML / Android NPU acceleration',
     runtime: 'litert'
   },
@@ -129,13 +133,14 @@ export const CATALOG: ModelCatalogEntry[] = [
     id: 'gemma-4-e4b-it-litert',
     tier: 'capable',
     displayName: 'Gemma 4 E4B (LiteRT)',
-    url: 'https://huggingface.co/google/gemma-4-E4B-it-litert/resolve/main/gemma-4-E4B-it.task',
+    url: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm',
     sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
-    sizeBytes: 3_610_000_000,
+    sizeBytes: 3_650_000_000,
     contextLen: 4096,
-    minRamGB: 10,
-    recommendedRamGB: 12,
-    goodFor: 'Gemma 4 E4B via LiteRT — better quality than E2B, heavier RAM footprint',
+    // Google's AI Edge Gallery lists this as runnable on ~8 GB devices.
+    minRamGB: 6,
+    recommendedRamGB: 8,
+    goodFor: 'Gemma 4 E4B via LiteRT — better quality than E2B, lighter on RAM than the GGUF variant',
     runtime: 'litert'
   }
 ];
@@ -143,4 +148,4 @@ export const CATALOG: ModelCatalogEntry[] = [
 export const getCatalogEntry = (id: string): ModelCatalogEntry | undefined =>
   CATALOG.find((e) => e.id === id);
 
-export const DEFAULT_MODEL_ID = 'llama-3.2-3b-q4';
+export const DEFAULT_MODEL_ID = 'qwen3-4b-q4';

@@ -49,12 +49,12 @@ describe('messages repo', () => {
     await finishMessage(m.id, {
       finish_reason: 'cancelled',
       token_count: 7,
-      model_id: 'llama-3.2-3b-q4'
+      model_id: 'qwen3-4b-q4'
     });
     const list = await listMessages(c.id);
     expect(list[0]?.finish_reason).toBe('cancelled');
     expect(list[0]?.token_count).toBe(7);
-    expect(list[0]?.model_id).toBe('llama-3.2-3b-q4');
+    expect(list[0]?.model_id).toBe('qwen3-4b-q4');
   });
 
   it('deletes a message', async () => {

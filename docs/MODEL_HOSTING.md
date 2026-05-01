@@ -8,8 +8,7 @@ infrastructure.
 
 | Family | License | Self-host? | Click-through? | Notes |
 | --- | --- | --- | --- | --- |
-| Llama 3.2 | Llama 3.2 Community License | Yes (with attribution + use policy pass-through) | No (with the bartowski mirrors we use) | 700M+ MAU restriction won't bite us |
-| Qwen 2.5 | Apache 2.0 | Yes | No | Cleanest license of the lot |
+| Qwen 3 | Apache 2.0 | Yes | No | Cleanest license of the lot — covers 1.7B / 4B / 8B |
 | **Gemma 4** | **Apache 2.0** | **Yes** | **No** | License upgraded from Gemma TOU in March 2026 |
 | Gemma 3n (not shipped) | Gemma Terms of Use | Yes, with extra obligations | Yes | Avoid until we want multimodal |
 
@@ -32,7 +31,7 @@ but it's not what we want to ship long-term:
    re-licensed, or moved between repos. A self-hosted mirror insulates the
    shipped app from that.
 
-## Apache 2.0 in plain English (Gemma 4 + Qwen 2.5)
+## Apache 2.0 in plain English (Gemma 4 + Qwen 3)
 
 You can:
 
@@ -60,16 +59,6 @@ There is no:
 - Royalty obligation.
 - Acceptable-use policy pass-through (unlike the older Gemma Terms of Use,
   which Gemma 4 explicitly replaced).
-
-## Llama 3.2 specifics
-
-Slightly heavier than Apache 2.0 but still permissive for our scale:
-
-- Pass through the Llama 3.2 Community License to recipients.
-- Pass through the Acceptable Use Policy.
-- Display "Built with Llama" prominently if we use Llama as a foundation in
-  a derived offering.
-- Comply with the 700M MAU clause — not relevant for us.
 
 ## Operational checklist for re-hosting a model
 
@@ -107,19 +96,21 @@ CDN:
 
 | Model id | Upstream | Mirror status |
 | --- | --- | --- |
-| `llama-3.2-1b-q4` | bartowski/Llama-3.2-1B-Instruct-GGUF (HF) | not yet mirrored |
-| `llama-3.2-3b-q4` | bartowski/Llama-3.2-3B-Instruct-GGUF (HF) | not yet mirrored |
+| `qwen3-1.7b-q4` | bartowski/Qwen_Qwen3-1.7B-GGUF (HF) | not yet mirrored |
+| `qwen3-4b-q4` | bartowski/Qwen_Qwen3-4B-GGUF (HF) | not yet mirrored |
+| `qwen3-8b-q4` | bartowski/Qwen_Qwen3-8B-GGUF (HF) | not yet mirrored |
 | `gemma-4-e2b-it-q4` | bartowski/google_gemma-4-E2B-it-GGUF (HF) | not yet mirrored |
 | `gemma-4-e4b-it-q4` | bartowski/google_gemma-4-E4B-it-GGUF (HF) | not yet mirrored |
-| `qwen-2.5-7b-q4` | bartowski/Qwen2.5-7B-Instruct-GGUF (HF) | not yet mirrored |
-| `gemma-4-e2b-it-litert` | google/gemma-4-E2B-it-litert (HF) | placeholder URL — replace before ship |
-| `gemma-4-e4b-it-litert` | google/gemma-4-E4B-it-litert (HF) | placeholder URL — replace before ship |
+| `gemma-4-e2b-it-litert` | litert-community/gemma-4-E2B-it-litert-lm (HF) | URL confirmed; SHA pending real download |
+| `gemma-4-e4b-it-litert` | litert-community/gemma-4-E4B-it-litert-lm (HF) | URL confirmed; SHA pending real download |
 
-The placeholder URLs in the LiteRT entries assume Google publishes the
-official `.task` files at the path shown. Until we've confirmed the exact
-canonical URL, treat them as TODOs — Phase 4 of the
-`react-native-mediapipe-llm` rollout (see that module's README) is the right
-time to lock these down.
+The LiteRT bundles ship under the `litert-community/` HF org (not `google/`,
+which only hosts the safetensors weights). Each repo has multiple files —
+we use `<id>.litertlm`, the same bundle Google's AI Edge Gallery ships to
+mobile. Recent `MediaPipeTasksGenAI` (iOS) and `mediapipe.tasks.genai.llminference`
+(Android) versions accept `.litertlm` directly. The `-web.task` siblings
+target MediaPipe Tasks Web (JS runtime) and are not what we want on
+device.
 
 ## CDN choice
 
@@ -160,7 +151,7 @@ model. That's a gap to close before any external release. The minimum:
 
 ```
 assets/legal/
-  apache-2.0.txt              # one shared copy, referenced by Gemma 4 + Qwen 2.5
+  apache-2.0.txt              # one shared copy, referenced by Gemma 4 + Qwen 3
   llama-3.2-community.txt
   gemma-4-NOTICE.txt
   llama-3.2-acceptable-use.txt

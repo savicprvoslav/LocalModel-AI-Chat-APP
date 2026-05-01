@@ -17,19 +17,19 @@ beforeEach(() => {
 describe('model/storage', () => {
   it('returns the conventional path under documents/models/', () => {
     expect(modelsDir()).toBe('file:///docs/models/');
-    expect(modelPath('llama-3.2-3b-q4')).toBe('file:///docs/models/llama-3.2-3b-q4.gguf');
+    expect(modelPath('qwen3-4b-q4')).toBe('file:///docs/models/qwen3-4b-q4.gguf');
   });
 
   it('reports existence', async () => {
-    FS.__setFile('file:///docs/models/llama-3.2-3b-q4.gguf', 2_000_000_000);
-    await expect(modelExists('llama-3.2-3b-q4')).resolves.toBe(true);
+    FS.__setFile('file:///docs/models/qwen3-4b-q4.gguf', 2_000_000_000);
+    await expect(modelExists('qwen3-4b-q4')).resolves.toBe(true);
     await expect(modelExists('missing')).resolves.toBe(false);
   });
 
   it('deletes', async () => {
-    FS.__setFile('file:///docs/models/llama-3.2-3b-q4.gguf', 2_000_000_000);
-    await deleteModel('llama-3.2-3b-q4');
-    await expect(modelExists('llama-3.2-3b-q4')).resolves.toBe(false);
+    FS.__setFile('file:///docs/models/qwen3-4b-q4.gguf', 2_000_000_000);
+    await deleteModel('qwen3-4b-q4');
+    await expect(modelExists('qwen3-4b-q4')).resolves.toBe(false);
   });
 
   it('reports free disk', async () => {
@@ -37,9 +37,9 @@ describe('model/storage', () => {
   });
 
   it('totals installed model sizes', async () => {
-    FS.__setFile('file:///docs/models/llama-3.2-1b-q4.gguf', 700_000_000);
-    FS.__setFile('file:///docs/models/llama-3.2-3b-q4.gguf', 2_000_000_000);
-    const total = await totalModelBytes(['llama-3.2-1b-q4', 'llama-3.2-3b-q4', 'qwen-2.5-7b-q4']);
+    FS.__setFile('file:///docs/models/qwen3-1.7b-q4.gguf', 700_000_000);
+    FS.__setFile('file:///docs/models/qwen3-4b-q4.gguf', 2_000_000_000);
+    const total = await totalModelBytes(['qwen3-1.7b-q4', 'qwen3-4b-q4', 'qwen3-8b-q4']);
     expect(total).toBe(2_700_000_000);
   });
 });

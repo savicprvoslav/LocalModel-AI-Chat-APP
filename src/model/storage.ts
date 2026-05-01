@@ -5,7 +5,7 @@ export const modelsDir = (): string => `${FS.documentDirectory}models/`;
 
 const extensionFor = (id: string): string => {
   const entry = getCatalogEntry(id);
-  return entry?.runtime === 'litert' ? 'task' : 'gguf';
+  return entry?.runtime === 'litert' ? 'litertlm' : 'gguf';
 };
 
 export const modelPath = (id: string): string => `${modelsDir()}${id}.${extensionFor(id)}`;
