@@ -91,7 +91,7 @@ export const llamaRnEngine: ChatEngine = {
           prompt,
           temperature: options.temperature,
           n_predict: options.maxTokens,
-          stop: ['<|eot_id|>', '</s>', '<|end|>']
+          stop: ['<|eot_id|>', '</s>', '<|end|>', '<|user|>', '<|assistant|>', '<|system|>']
         },
         (data: { token: string }) => {
           if (aborted) return;
