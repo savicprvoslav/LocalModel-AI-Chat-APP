@@ -82,14 +82,12 @@ export const httpRequestTool: Tool = {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
-    if (ctx.signal) {
-      ctx.signal.addEventListener('abort', () => controller.abort());
-    }
+    const onParentAbort = () => controller.abort();
+    ctx.signal?.addEventListener('abort', onParentAbort);
 
     try {
       const res = await fetch(url, { method, headers, signal: controller.signal });
       const text = await res.text();
-      // Cap body for safety — model context is precious.
       const trimmed = text.length > 8192 ? `${text.slice(0, 8192)}\n…[truncated]` : text;
       return JSON.stringify({
         status: res.status,
@@ -101,6 +99,7 @@ export const httpRequestTool: Tool = {
       return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', onParentAbort);
     }
   }
 };

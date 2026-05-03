@@ -93,7 +93,7 @@ export const StatusLine = ({ state, onRetry }: Props) => {
   );
 
   if (isRetryable) {
-    return <Pressable onPress={onRetry}>{inner} TEST</Pressable>;
+    return <Pressable onPress={onRetry}>{inner}</Pressable>;
   }
   return inner;
 };

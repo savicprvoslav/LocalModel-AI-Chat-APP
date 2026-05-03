@@ -1,13 +1,11 @@
 /**
  * Tools the model can invoke during generation.
  *
- * Tool calls are surfaced via prompt engineering — the system prompt
- * advertises what's available, the model emits a `<tool_call>` block,
- * we run it locally, and feed the result back as a `<tool_result>` block
- * for the next generation step.
- *
- * No native tool/function-calling API is assumed; this works against any
- * instruction-tuned model.
+ * Tool specs are converted to OpenAI-compatible JSON schemas (see
+ * `openaiSpec.ts`) and passed to llama.rn's native tool-calling API.
+ * Each model's Jinja chat template renders the tools in its trained
+ * format (Qwen ChatML, Llama 3.x, etc.) and parses structured
+ * `ToolCallEvent`s from the output.
  */
 
 export type ToolParam = {
@@ -51,9 +49,6 @@ export type ToolCall = {
   name: string;
   /** Parsed JSON args (raw {} if none). */
   args: Record<string, unknown>;
-  /** The exact substring of the assistant message containing the call,
-   *  including the surrounding tags. Used to splice in the result. */
-  raw: string;
 };
 
 export type ToolInvocation = {

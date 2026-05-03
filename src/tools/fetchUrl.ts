@@ -45,14 +45,12 @@ export const fetchUrlTool: Tool = {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
-    if (ctx.signal) {
-      ctx.signal.addEventListener('abort', () => controller.abort());
-    }
+    const onParentAbort = () => controller.abort();
+    ctx.signal?.addEventListener('abort', onParentAbort);
 
     try {
       const res = await fetch(url, {
         method: 'GET',
-        // A real UA helps with sites that 403 unknown clients.
         headers: { 'User-Agent': 'Mozilla/5.0 LocalChat/0.1' },
         signal: controller.signal
       });
@@ -67,6 +65,7 @@ export const fetchUrlTool: Tool = {
       return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', onParentAbort);
     }
   }
 };

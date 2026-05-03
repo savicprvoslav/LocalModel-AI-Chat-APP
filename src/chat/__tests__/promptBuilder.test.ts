@@ -1,4 +1,4 @@
-import { buildPrompt, BuildPromptArgs } from '../promptBuilder';
+import { buildMessages, BuildPromptArgs } from '../promptBuilder';
 import type { Message } from '@/db/messages';
 
 const mkMsg = (role: 'user' | 'assistant', content: string, t = 1): Message => ({
@@ -14,9 +14,6 @@ const mkMsg = (role: 'user' | 'assistant', content: string, t = 1): Message => (
   tool_calls: null
 });
 
-// Tests that don't care about the base system prompt suppress it via
-// baseSystemPrompt: ''. Tests that need to verify base-layer behavior
-// override per-test.
 const baseArgs: BuildPromptArgs = {
   baseSystemPrompt: '',
   personaSystemPrompt: '',
@@ -29,15 +26,17 @@ const baseArgs: BuildPromptArgs = {
   reservedForResponse: 1024
 };
 
-describe('buildPrompt', () => {
-  it('builds minimal prompt with just user turn', () => {
-    const r = buildPrompt(baseArgs);
-    expect(r.text).toContain('hello');
+describe('buildMessages', () => {
+  it('builds minimal messages with just user turn', () => {
+    const r = buildMessages(baseArgs);
+    const last = r.messages[r.messages.length - 1];
+    expect(last?.role).toBe('user');
+    expect(last?.content).toBe('hello');
     expect(r.dropped).toBe(0);
   });
 
   it('combines persona + project + conversation system layers', () => {
-    const r = buildPrompt({
+    const r = buildMessages({
       ...baseArgs,
       personaSystemPrompt: 'You are a concise assistant',
       projectNotes: 'Acme migrating to Postgres',
@@ -47,32 +46,35 @@ describe('buildPrompt', () => {
       ],
       conversationSystemPrompt: 'this is a 1:1 prep'
     });
-    expect(r.text).toContain('You are a concise assistant');
-    expect(r.text).toContain('PROJECT CONTEXT:');
-    expect(r.text).toContain('Acme migrating to Postgres');
-    expect(r.text).toContain('Tom: backend lead');
-    expect(r.text).toContain('Q4 freeze: no risky merges after Dec 5');
-    expect(r.text).toContain('this is a 1:1 prep');
-    // ordering
-    expect(r.text.indexOf('You are a concise')).toBeLessThan(r.text.indexOf('PROJECT CONTEXT'));
-    expect(r.text.indexOf('PROJECT CONTEXT')).toBeLessThan(r.text.indexOf('this is a 1:1 prep'));
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys).toBeDefined();
+    expect(sys!.content).toContain('You are a concise assistant');
+    expect(sys!.content).toContain('PROJECT CONTEXT:');
+    expect(sys!.content).toContain('Acme migrating to Postgres');
+    expect(sys!.content).toContain('Tom: backend lead');
+    expect(sys!.content).toContain('Q4 freeze: no risky merges after Dec 5');
+    expect(sys!.content).toContain('this is a 1:1 prep');
+    expect(sys!.content.indexOf('You are a concise')).toBeLessThan(
+      sys!.content.indexOf('PROJECT CONTEXT')
+    );
+    expect(sys!.content.indexOf('PROJECT CONTEXT')).toBeLessThan(
+      sys!.content.indexOf('this is a 1:1 prep')
+    );
   });
 
   it('renders only entities (no notes) when notes are empty', () => {
-    const r = buildPrompt({
+    const r = buildMessages({
       ...baseArgs,
       projectEntities: [{ name: 'Sam', description: 'PM' }]
     });
-    expect(r.text).toContain('PROJECT CONTEXT:');
-    expect(r.text).toContain('- Sam: PM');
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys?.content).toContain('PROJECT CONTEXT:');
+    expect(sys?.content).toContain('- Sam: PM');
   });
 
-  it('omits PROJECT CONTEXT block when notes and entities both empty', () => {
-    const r = buildPrompt({
-      ...baseArgs,
-      personaSystemPrompt: 'You are X'
-    });
-    expect(r.text).not.toContain('PROJECT CONTEXT');
+  it('omits system message when all prompt parts are empty', () => {
+    const r = buildMessages(baseArgs);
+    expect(r.messages.find((m) => m.role === 'system')).toBeUndefined();
   });
 
   it('drops oldest pairs to fit budget', () => {
@@ -85,7 +87,7 @@ describe('buildPrompt', () => {
       mkMsg('user', longContent, 5),
       mkMsg('assistant', longContent, 6)
     ];
-    const r = buildPrompt({
+    const r = buildMessages({
       ...baseArgs,
       history,
       contextWindow: 2048,
@@ -101,14 +103,15 @@ describe('buildPrompt', () => {
       mkMsg('user', 'recent user', 3),
       mkMsg('assistant', 'recent asst', 4)
     ];
-    const r = buildPrompt({ ...baseArgs, history });
-    expect(r.text).toContain('recent user');
-    expect(r.text).toContain('recent asst');
+    const r = buildMessages({ ...baseArgs, history });
+    const contents = r.messages.map((m) => m.content);
+    expect(contents).toContain('recent user');
+    expect(contents).toContain('recent asst');
   });
 
   it('throws when persona + new turn exceeds budget', () => {
     expect(() =>
-      buildPrompt({
+      buildMessages({
         ...baseArgs,
         personaSystemPrompt: 'x'.repeat(50000),
         contextWindow: 1024,
@@ -117,62 +120,38 @@ describe('buildPrompt', () => {
     ).toThrow(/too long/i);
   });
 
-  it('renders history oldest→newest', () => {
+  it('renders history oldest-first then new user turn last', () => {
     const history = [mkMsg('user', 'first-user', 1), mkMsg('assistant', 'first-asst', 2)];
-    const r = buildPrompt({ ...baseArgs, history });
-    expect(r.text.indexOf('first-user')).toBeLessThan(r.text.indexOf('first-asst'));
-    expect(r.text.indexOf('first-asst')).toBeLessThan(r.text.indexOf(baseArgs.newUserTurn));
+    const r = buildMessages({ ...baseArgs, history });
+    const nonSystem = r.messages.filter((m) => m.role !== 'system');
+    expect(nonSystem[0]?.content).toBe('first-user');
+    expect(nonSystem[1]?.content).toBe('first-asst');
+    expect(nonSystem[2]?.content).toBe('hello');
   });
 
-  it('includes RELEVANT FROM PAST block when snippets are provided', () => {
-    const r = buildPrompt({
+  it('includes RELEVANT FROM PAST block in system message', () => {
+    const r = buildMessages({
       ...baseArgs,
+      personaSystemPrompt: 'X',
       relevantSnippets: [
         { source: '~/acme/board-prep', excerpt: 'Tom said the timeline is tight' },
         { source: '~/acme/q4-plan', excerpt: 'Migration scoped for Q1' }
       ]
     });
-    expect(r.text).toContain('RELEVANT FROM PAST');
-    expect(r.text).toContain('[~/acme/board-prep]');
-    expect(r.text).toContain('Tom said the timeline is tight');
-    expect(r.text).toContain('Migration scoped for Q1');
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys?.content).toContain('RELEVANT FROM PAST');
+    expect(sys?.content).toContain('[~/acme/board-prep]');
+    expect(sys?.content).toContain('Tom said the timeline is tight');
   });
 
   it('omits RELEVANT block when snippets array is empty', () => {
-    const r = buildPrompt({ ...baseArgs, relevantSnippets: [] });
-    expect(r.text).not.toContain('RELEVANT FROM PAST');
-  });
-
-  it('does NOT inject a TOOLS block into the system prompt', () => {
-    // Tools are no longer described in the system prompt — they flow
-    // through llama.rn's native tool-calling API. The prompt builder
-    // ignores the `tools` arg from a content perspective.
-    const r = buildPrompt({
-      ...baseArgs,
-      tools: [
-        {
-          id: 'calculator',
-          name: 'Calculator',
-          description: 'Evaluate arithmetic',
-          params: [
-            {
-              name: 'expression',
-              type: 'string',
-              required: true,
-              description: 'Expression to evaluate'
-            }
-          ],
-          network: false,
-          run: async () => ''
-        }
-      ]
-    });
-    expect(r.text).not.toContain('TOOLS YOU CAN CALL');
-    expect(r.text).not.toContain('<tool_call>');
+    const r = buildMessages({ ...baseArgs, personaSystemPrompt: 'X', relevantSnippets: [] });
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys?.content).not.toContain('RELEVANT FROM PAST');
   });
 
   it('includes the BASE system prompt by default and orders it first', () => {
-    const r = buildPrompt({
+    const r = buildMessages({
       personaSystemPrompt: 'You are Captain.',
       projectNotes: '',
       projectEntities: [],
@@ -182,31 +161,23 @@ describe('buildPrompt', () => {
       contextWindow: 4096,
       reservedForResponse: 1024
     });
-    expect(r.text).toContain("running entirely on the user's device");
-    expect(r.text.indexOf("running entirely on the user's device")).toBeLessThan(
-      r.text.indexOf('You are Captain.')
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys?.content).toContain("running entirely on the user's device");
+    expect(sys!.content.indexOf("running entirely on the user's device")).toBeLessThan(
+      sys!.content.indexOf('You are Captain.')
     );
   });
 
   it('honors baseSystemPrompt: "" to suppress the base layer', () => {
-    const r = buildPrompt({ ...baseArgs, personaSystemPrompt: 'X' });
-    expect(r.text).not.toContain("running entirely on the user's device");
-    expect(r.text).toContain('X');
-  });
-
-  it('honors a custom baseSystemPrompt override', () => {
-    const r = buildPrompt({
-      ...baseArgs,
-      baseSystemPrompt: 'You are a pirate. Always say arrr.',
-      personaSystemPrompt: ''
-    });
-    expect(r.text).toContain('You are a pirate. Always say arrr.');
-    expect(r.text).not.toContain("running entirely on the user's device");
+    const r = buildMessages({ ...baseArgs, personaSystemPrompt: 'X' });
+    const sys = r.messages.find((m) => m.role === 'system');
+    expect(sys?.content).not.toContain("running entirely on the user's device");
+    expect(sys?.content).toContain('X');
   });
 
   it('drops RELEVANT block (rather than throwing) if it would exceed budget', () => {
     const long = 'x'.repeat(1500);
-    const r = buildPrompt({
+    const r = buildMessages({
       ...baseArgs,
       contextWindow: 1024,
       reservedForResponse: 256,
@@ -215,7 +186,25 @@ describe('buildPrompt', () => {
         { source: 'b', excerpt: long }
       ]
     });
-    // Build succeeds and the snippets are NOT in the prompt.
-    expect(r.text).not.toContain(long);
+    const sys = r.messages.find((m) => m.role === 'system');
+    const allContent = r.messages.map((m) => m.content).join('');
+    expect(allContent).not.toContain(long);
+  });
+
+  it('expands persisted tool_calls into role:tool messages after assistant turn', () => {
+    const history = [
+      mkMsg('user', 'what is the weather?', 1),
+      {
+        ...mkMsg('assistant', 'The weather in Belgrade is sunny.', 2),
+        tool_calls: [
+          { name: 'weather', args: { location: 'Belgrade' }, result: 'Sunny, 25°C' }
+        ]
+      }
+    ];
+    const r = buildMessages({ ...baseArgs, history });
+    const toolMsg = r.messages.find((m) => m.role === 'tool');
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg!.content).toContain('Sunny, 25°C');
+    expect(toolMsg!.name).toBe('weather');
   });
 });

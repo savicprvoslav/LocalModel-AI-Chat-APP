@@ -233,7 +233,6 @@ export const useConversation = (conversationId: string) => {
               excerpt: s.excerpt
             };
           }),
-          tools: activeTools,
           conversationSystemPrompt: conv.system_prompt,
           history,
           newUserTurn: text,
@@ -484,7 +483,7 @@ export const useConversation = (conversationId: string) => {
           } else {
             const inv = await runToolCall(
               tool,
-              { name: call.name, args: call.args, raw: '' },
+              { name: call.name, args: call.args },
               { ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {}) }
             );
             errorText = inv.error;
