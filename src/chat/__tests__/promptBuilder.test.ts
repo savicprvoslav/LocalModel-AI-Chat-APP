@@ -9,7 +9,9 @@ const mkMsg = (role: 'user' | 'assistant', content: string, t = 1): Message => (
   created_at: t,
   model_id: null,
   token_count: null,
-  finish_reason: null
+  finish_reason: null,
+  reasoning_content: null,
+  tool_calls: null
 });
 
 // Tests that don't care about the base system prompt suppress it via
@@ -141,7 +143,10 @@ describe('buildPrompt', () => {
     expect(r.text).not.toContain('RELEVANT FROM PAST');
   });
 
-  it('includes the TOOLS block when tools are provided', () => {
+  it('does NOT inject a TOOLS block into the system prompt', () => {
+    // Tools are no longer described in the system prompt — they flow
+    // through llama.rn's native tool-calling API. The prompt builder
+    // ignores the `tools` arg from a content perspective.
     const r = buildPrompt({
       ...baseArgs,
       tools: [
@@ -162,14 +167,8 @@ describe('buildPrompt', () => {
         }
       ]
     });
-    expect(r.text).toContain('TOOLS YOU CAN CALL');
-    expect(r.text).toContain('calculator');
-    expect(r.text).toContain('expression');
-  });
-
-  it('omits the TOOLS block when tools array is empty or missing', () => {
-    expect(buildPrompt(baseArgs).text).not.toContain('TOOLS YOU CAN CALL');
-    expect(buildPrompt({ ...baseArgs, tools: [] }).text).not.toContain('TOOLS YOU CAN CALL');
+    expect(r.text).not.toContain('TOOLS YOU CAN CALL');
+    expect(r.text).not.toContain('<tool_call>');
   });
 
   it('includes the BASE system prompt by default and orders it first', () => {

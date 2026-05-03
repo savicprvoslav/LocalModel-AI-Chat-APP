@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Initial schema (v1). Used for `:memory:` test DBs.
@@ -33,7 +33,16 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at INTEGER NOT NULL,
   model_id TEXT,
   token_count INTEGER,
-  finish_reason TEXT
+  finish_reason TEXT,
+  -- Reasoning text emitted by the model inside <think>...</think> blocks.
+  -- Hidden from the chat by default; the UI can expose it behind a
+  -- "Show thinking" disclosure on assistant messages.
+  reasoning_content TEXT,
+  -- JSON array of tool invocations made during this assistant turn:
+  --   [{name, args, result, error?}, ...]
+  -- Used by buildMessages() to reconstruct role:'tool' history messages
+  -- on subsequent turns so follow-up questions can reference raw tool data.
+  tool_calls TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id, created_at);
 
@@ -199,5 +208,17 @@ export const MIGRATIONS: Record<number, string[]> = {
       embedder TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`
+  ],
+  6: [
+    // Add a column for the model's `<think>…</think>` reasoning text. The
+    // chat shows the answer (without reasoning) by default; the UI can
+    // surface this column behind a "Show thinking" disclosure.
+    `ALTER TABLE messages ADD COLUMN reasoning_content TEXT`
+  ],
+  7: [
+    // Persist tool invocations made during an assistant turn so follow-up
+    // turns can reference the raw tool data (otherwise it'd live only in
+    // the volatile workingMessages array of the round it ran in).
+    `ALTER TABLE messages ADD COLUMN tool_calls TEXT`
   ]
 };

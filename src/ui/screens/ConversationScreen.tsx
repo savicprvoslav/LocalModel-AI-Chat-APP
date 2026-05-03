@@ -49,6 +49,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     error,
     tokenCount,
     tokRate,
+    thinking,
     send,
     stop,
     retry,
@@ -355,7 +356,7 @@ export const ConversationScreen = ({ conversationId, starterText }: Props) => {
     : status === 'error'
       ? { kind: 'error', reason: error ?? 'unknown' }
       : isStreaming
-        ? { kind: 'streaming', tokenCount, tokRate }
+        ? { kind: 'streaming', tokenCount, tokRate, thinking }
         : {
             kind: 'empty',
             ...(project?.name ? { project: project.name } : {}),

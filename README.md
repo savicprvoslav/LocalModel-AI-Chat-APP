@@ -55,6 +55,7 @@ npm start                                # open Metro bundler
 
 # To run in iOS simulator with native modules:
 npx expo prebuild --clean
+cd ios && pod install && cd ..
 npx expo run:ios
 npx expo run:ios --configuration Release --device
 

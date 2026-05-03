@@ -1,19 +1,36 @@
 import type { Tool } from './types';
 import { calculatorTool } from './calculator';
 import { currentTimeTool } from './currentTime';
-import { searchConversationsTool } from './searchConversations';
 import { webSearchTool } from './webSearch';
+import { httpRequestTool } from './httpRequest';
+import { fetchUrlTool } from './fetchUrl';
+import { weatherTool } from './weather';
 
 /**
- * The full catalog of tools the app knows about. The runtime registry
- * (which the model actually sees) is filtered down by the user's
- * settings — see {@link enabledTools}.
+ * Tool catalog — five generic primitives the model can compose.
+ *
+ * The PRD originally suggested per-service tools (calendar.search,
+ * email.create_draft, reminder.create, etc.). Those each need a real iOS
+ * native bridge. Instead we ship generic primitives and let the model
+ * orchestrate them:
+ *
+ *   web_search → fetch_url → http_request(POST, webhook)
+ *
+ * Any service that exposes an HTTP API (Slack, Notion, Linear, IFTTT,
+ * Zapier, your own backend) is reachable via `http_request` without us
+ * shipping a dedicated native bridge per service.
+ *
+ * Note: `searchConversations` was removed — conversation-history retrieval
+ * runs through the RAG layer (`src/integration/rag.ts`), so we don't expose
+ * two parallel paths to the model.
  */
 export const ALL_TOOLS: Tool[] = [
   calculatorTool,
   currentTimeTool,
-  searchConversationsTool,
-  webSearchTool
+  weatherTool,
+  webSearchTool,
+  fetchUrlTool,
+  httpRequestTool
 ];
 
 export type ToolsConfig = {

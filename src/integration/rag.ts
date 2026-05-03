@@ -17,8 +17,15 @@ let _rag: Rag | null = null;
 
 const buildLlmAdapter = (): LlmAdapter => ({
   isReady: () => llamaRnEngine.isReady(),
+  // RAG's adapter contract is intentionally string-based (see rag/types.ts).
+  // The engine moved to a structured messages API; we wrap by sending the
+  // RAG prompt as a single user-role message.
   streamCompletion: (prompt, options, cb) =>
-    llamaRnEngine.streamCompletion(prompt, options, cb)
+    llamaRnEngine.streamCompletion(
+      { messages: [{ role: 'user', content: prompt }] },
+      options,
+      cb
+    )
 });
 
 const buildDbAdapter = (): SqliteAdapter => ({

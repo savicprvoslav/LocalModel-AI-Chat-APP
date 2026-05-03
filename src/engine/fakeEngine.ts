@@ -1,4 +1,4 @@
-import { ChatEngine, GenerationOptions, StreamCallbacks } from './types';
+import { ChatEngine, GenerationOptions, StreamCallbacks, StreamInput } from './types';
 
 export type FakeEngineConfig = {
   scriptedResponse?: string;
@@ -26,13 +26,14 @@ export const createFakeEngine = (cfg: FakeEngineConfig = {}): ChatEngine => {
       loadedPath = null;
     },
 
-    async streamCompletion(prompt: string, options: GenerationOptions, cb: StreamCallbacks) {
+    async streamCompletion(input: StreamInput, options: GenerationOptions, cb: StreamCallbacks) {
       if (!loaded) throw new Error('engine not loaded');
       if (cfg.failOn === 'stream') {
         cb.onError(new Error('fake stream failure'));
         return;
       }
-      const text = cfg.scriptedResponse ?? `[fake response to: "${prompt.slice(-40)}"]`;
+      const lastUser = [...input.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+      const text = cfg.scriptedResponse ?? `[fake response to: "${lastUser.slice(-40)}"]`;
       const tokens = text.match(/\S+\s*|\s+/g) ?? [text];
       const delay = cfg.delayPerTokenMs ?? 0;
 

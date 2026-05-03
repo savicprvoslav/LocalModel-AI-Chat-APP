@@ -79,7 +79,7 @@ export const draftSkill = async (
 
   await new Promise<void>((resolve, reject) => {
     void engine.streamCompletion(
-      prompt,
+      { messages: [{ role: 'user', content: prompt }] },
       {
         temperature: opts.generation?.temperature ?? DEFAULT_TEMPERATURE,
         maxTokens: opts.generation?.maxTokens ?? DEFAULT_MAX_TOKENS,

@@ -1,7 +1,9 @@
-import { Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../theme/useTheme';
 import { Message } from '@/db/messages';
+import { stripReasoning } from '@/chat/reasoning';
 import { StreamingCursor } from './StreamingCursor';
 
 const formatTime = (ts: number): string => {
@@ -30,9 +32,29 @@ type Props = {
  * User turns get the index in mono ("01"), assistant turns get a returns
  * arrow ("↳") in warm orange. AI prose is serif at 17/27.
  */
+// Compact JSON-ish summary of tool args for the chip header — keeps it on
+// one line. `{"location":"Belgrade"}` becomes `location:"Belgrade"`.
+const summarizeArgs = (args: Record<string, unknown>): string => {
+  const entries = Object.entries(args);
+  if (entries.length === 0) return '';
+  return entries
+    .map(([k, v]) => `${k}:${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+    .join(', ');
+};
+
 export const MessageBubble = ({ message, isStreaming, index }: Props) => {
   const t = useTheme();
   const indexStr = String(index).padStart(2, '0');
+  const [showThinking, setShowThinking] = useState(false);
+  const [showTools, setShowTools] = useState(false);
+  const reasoning = message.reasoning_content?.trim();
+  const hasReasoning = !!reasoning && message.role === 'assistant';
+  const toolCalls = message.tool_calls ?? [];
+  const hasToolCalls = toolCalls.length > 0 && message.role === 'assistant';
+  const toolsLabel =
+    toolCalls.length === 1
+      ? toolCalls[0]?.name ?? 'tool'
+      : `${toolCalls.length} tools`;
 
   if (message.role === 'user') {
     return (
@@ -115,9 +137,108 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
             paragraph: { marginTop: 0, marginBottom: t.spacing.sm }
           }}
         >
-          {message.content || ' '}
+          {/*
+            Defense in depth: re-run the reasoning strip at render time so
+            messages persisted from earlier app versions (which may have
+            stored raw `<think>` / `<|channel|>` markup) still display
+            cleanly. Idempotent — running it on already-stripped content
+            is a no-op.
+          */}
+          {stripReasoning(message.content) || ' '}
         </Markdown>
         {isStreaming ? <StreamingCursor /> : null}
+        {hasReasoning ? (
+          <Pressable
+            onPress={() => setShowThinking((v) => !v)}
+            style={{
+              marginTop: t.spacing.xs,
+              paddingVertical: 4,
+              alignSelf: 'flex-start'
+            }}
+          >
+            <Text
+              style={{
+                ...t.type.metaV2,
+                color: t.colors.text.tertiary
+              }}
+            >
+              {showThinking ? '▾ thinking' : '▸ thinking'}
+            </Text>
+          </Pressable>
+        ) : null}
+        {hasReasoning && showThinking ? (
+          <View
+            style={{
+              marginTop: t.spacing.xs,
+              paddingLeft: t.spacing.sm,
+              borderLeftWidth: 2,
+              borderLeftColor: t.colors.bg.subtle
+            }}
+          >
+            <Text
+              style={{
+                ...t.type.bodyAiV2,
+                color: t.colors.text.tertiary,
+                fontStyle: 'italic'
+              }}
+            >
+              {reasoning}
+            </Text>
+          </View>
+        ) : null}
+        {hasToolCalls ? (
+          <Pressable
+            onPress={() => setShowTools((v) => !v)}
+            style={{
+              marginTop: t.spacing.xs,
+              paddingVertical: 4,
+              alignSelf: 'flex-start'
+            }}
+          >
+            <Text
+              style={{
+                ...t.type.metaV2,
+                color: t.colors.text.tertiary
+              }}
+            >
+              {showTools ? '▾' : '▸'} {toolsLabel}
+            </Text>
+          </Pressable>
+        ) : null}
+        {hasToolCalls && showTools ? (
+          <View
+            style={{
+              marginTop: t.spacing.xs,
+              paddingLeft: t.spacing.sm,
+              borderLeftWidth: 2,
+              borderLeftColor: t.colors.bg.subtle,
+              gap: t.spacing.sm
+            }}
+          >
+            {toolCalls.map((call, i) => (
+              <View key={i}>
+                <Text
+                  style={{
+                    ...t.type.metaV2,
+                    color: t.colors.text.secondary,
+                    fontFamily: t.fonts.mono
+                  }}
+                >
+                  {call.name}({summarizeArgs(call.args)})
+                </Text>
+                <Text
+                  style={{
+                    ...t.type.metaV2,
+                    color: call.error ? t.colors.accent.warm : t.colors.text.tertiary,
+                    marginTop: 2
+                  }}
+                >
+                  {call.error ? `↳ error: ${call.error}` : `↳ ${call.result}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <Text
           style={{
             ...t.type.metaV2,

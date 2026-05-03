@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Message,
+  PersistedToolInvocation,
   appendMessage,
   finishMessage,
   listMessages,
@@ -15,21 +16,23 @@ import {
 import { Project, getProject } from '@/db/projects';
 import { getAllSettings, Settings } from '@/db/settings';
 import { getEngine, getEngineForModel } from '@/engine';
-import { buildPrompt } from './promptBuilder';
+import { buildMessages } from './promptBuilder';
+import {
+  stripReasoning,
+  extractReasoning,
+  TOOL_RESULT_OPEN,
+  TOOL_RESULT_CLOSE
+} from './reasoning';
 import { getCatalogEntry } from '@/model/catalog';
 import { modelPath } from '@/model/storage';
 import { Persona, getPersona, getDefaultPersona } from '@/db/personas';
 import { getSkill } from '@/db/skills';
 import { getRag } from '@/integration/rag';
 import type { Snippet } from '@/rag';
-import {
-  enabledTools,
-  findTool,
-  formatToolResult,
-  parseToolCalls,
-  runToolCall
-} from '@/tools';
-import type { FinishReason } from '@/engine/types';
+import { enabledTools, findTool, runToolCall } from '@/tools';
+import { toolsToOpenAISpecs } from '@/tools/openaiSpec';
+import type { ToolCallEvent } from '@/engine/types';
+import type { ChatMessage, FinishReason } from '@/engine/types';
 
 export type ConversationStatus = 'idle' | 'warming' | 'streaming' | 'error' | 'cancelled';
 
@@ -55,6 +58,12 @@ export type UseConversationState = {
   error: string | null;
   tokenCount: number;
   tokRate: number;
+  /**
+   * True while the assistant is mid-reasoning (Qwen 3 / R1 thinking phase) —
+   * the visible answer hasn't started yet but the model IS generating tokens.
+   * Status line uses this to show "thinking…" instead of "generating".
+   */
+  thinking: boolean;
   /** Number of past-conversation snippets retrieved for the current send. */
   retrievedCount: number;
   /** Detailed snippets for the retrieval-peek UI. Cleared when streaming starts. */
@@ -73,6 +82,7 @@ export const useConversation = (conversationId: string) => {
     error: null,
     tokenCount: 0,
     tokRate: 0,
+    thinking: false,
     retrievedCount: 0,
     retrievedSnippets: [],
     warmingStages: []
@@ -156,6 +166,7 @@ export const useConversation = (conversationId: string) => {
         status: 'streaming',
         tokenCount: 0,
         tokRate: 0,
+        thinking: false,
         retrievedCount: 0,
         retrievedSnippets: [],
         warmingStages: [],
@@ -204,9 +215,9 @@ export const useConversation = (conversationId: string) => {
         per_tool: settings.tools_per_tool
       });
 
-      let prompt: string;
+      let messages: ChatMessage[];
       try {
-        const built = buildPrompt({
+        const built = buildMessages({
           personaSystemPrompt: persona?.system_prompt ?? '',
           projectNotes: project?.notes ?? '',
           projectEntities: entities.map((e) => ({
@@ -229,7 +240,7 @@ export const useConversation = (conversationId: string) => {
           contextWindow: settings.context_window,
           reservedForResponse: settings.max_tokens
         });
-        prompt = built.text;
+        messages = built.messages;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         await finishMessage(asstMsg.id, { finish_reason: 'error' });
@@ -339,27 +350,43 @@ export const useConversation = (conversationId: string) => {
 
       const flush = async (): Promise<void> => {
         lastFlush = Date.now();
-        await updateMessageStream(asstMsg.id, buffer);
+        const visible = stripReasoning(buffer);
+        // We're "thinking" if the model has emitted tokens but the visible
+        // (post-reasoning-strip) text is still empty. That covers both
+        // ChatML-style `<think>…</think>` blocks and Qwen-style jinja
+        // prefill where only `</think>` ever appears in the stream.
+        const thinking = count > 0 && visible.length === 0;
+        await updateMessageStream(asstMsg.id, visible);
         setState((s) => ({
           ...s,
           messages: s.messages.map((m) =>
-            m.id === asstMsg.id ? { ...m, content: buffer } : m
+            m.id === asstMsg.id ? { ...m, content: visible } : m
           ),
           tokenCount: count,
-          tokRate: count / Math.max(0.5, (Date.now() - startedAt) / 1000)
+          tokRate: count / Math.max(0.5, (Date.now() - startedAt) / 1000),
+          thinking
         }));
       };
 
+      // Pre-compute the OpenAI tool spec list once. llama.rn renders these
+      // into the model's native tool-calling format via the chat template.
+      const toolSpecs = activeTools.length > 0 ? toolsToOpenAISpecs(activeTools) : undefined;
+
+      type RoundResult =
+        | { ok: true; finishReason: FinishReason; toolCalls: ToolCallEvent[] }
+        | { ok: false; error: Error };
+
       const runStreamRound = (
-        roundPrompt: string
-      ): Promise<
-        | { ok: true; tokenCount: number; finishReason: FinishReason }
-        | { ok: false; error: Error }
-      > =>
+        roundMessages: ChatMessage[]
+      ): Promise<RoundResult> =>
         new Promise((resolve) => {
           let settled = false;
+          let calls: ToolCallEvent[] = [];
           void engine.streamCompletion(
-            roundPrompt,
+            {
+              messages: roundMessages,
+              ...(toolSpecs ? { tools: toolSpecs } : {})
+            },
             {
               temperature: effectiveTemp,
               maxTokens: settings.max_tokens,
@@ -371,10 +398,13 @@ export const useConversation = (conversationId: string) => {
                 count++;
                 if (Date.now() - lastFlush >= 33) void flush();
               },
-              onDone: ({ tokenCount, finishReason }) => {
+              onToolCalls: (parsed) => {
+                calls = parsed;
+              },
+              onDone: ({ finishReason }) => {
                 if (settled) return;
                 settled = true;
-                resolve({ ok: true, tokenCount, finishReason });
+                resolve({ ok: true, finishReason, toolCalls: calls });
               },
               onError: (err) => {
                 if (settled) return;
@@ -385,61 +415,111 @@ export const useConversation = (conversationId: string) => {
           );
         });
 
-      let currentPrompt = prompt;
-      let lastBufferLen = 0;
       let iterations = 0;
       let finalFinish: FinishReason = 'stop';
       let lastError: Error | null = null;
 
-      // Iteration loop: stream → parse for tool calls → run them → continue.
-      // When tools are disabled (or the model emits none), this runs exactly
-      // once and is identical to the pre-tools flow.
+      // Tool-result iteration loop.
+      //
+      // After each round that produced tool calls, run them and feed the
+      // results back via `role: 'tool'` messages. llama.rn's Jinja path
+      // renders these into each model's NATIVE tool-result format
+      // (Qwen 3: `<|im_start|>tool\n…\n<|im_end|>`, Llama: `<|eom|>` etc).
+      // Custom marker formats like `<tool_result>` were ignored by every
+      // model we tested because they aren't in the training distribution.
+      //
+      // Loop guard: if the model emits the same tool calls (by name+args)
+      // two rounds in a row, it's spinning — bail out with whatever
+      // tool result we have rather than running for `tools_max_iterations`.
+      let lastCallsSignature = '';
+      let workingMessages: ChatMessage[] = messages;
+      let lastToolResults = '';
+      // Collect every successful tool invocation across the rounds — these
+      // get persisted on the assistant message so a follow-up turn can
+      // re-feed them into the model's context.
+      const persistedInvocations: PersistedToolInvocation[] = [];
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const round = await runStreamRound(currentPrompt);
+        const round = await runStreamRound(workingMessages);
         if (!round.ok) {
           lastError = round.error;
           break;
         }
         finalFinish = round.finishReason;
 
-        const newPortion = buffer.slice(lastBufferLen);
-        const calls = activeTools.length > 0 ? parseToolCalls(newPortion) : [];
+        if (round.toolCalls.length === 0) break;
 
-        if (calls.length === 0) break;
+        const callsSignature = round.toolCalls
+          .map((c) => `${c.name}::${JSON.stringify(c.args)}`)
+          .join('|');
+        if (callsSignature === lastCallsSignature) {
+          // Model is stuck repeating the same call. Surface the prior tool
+          // results directly so the user gets *something* useful, then
+          // stop iterating.
+          buffer += `\n\n${lastToolResults}\n\n_(model didn't synthesize this — surfaced raw tool result)_\n`;
+          await flush();
+          break;
+        }
+        lastCallsSignature = callsSignature;
+
         if (iterations >= settings.tools_max_iterations) {
-          // Burn-out: tell the model further tool calls won't be honored
-          // (it'll have to answer with what it already has).
-          buffer += `\n<tool_result>\nERROR: tool-call iteration limit (${settings.tools_max_iterations}) reached. Answer with the information you already have.\n</tool_result>\n`;
+          buffer += `\n[tool-call iteration limit (${settings.tools_max_iterations}) reached]`;
           await flush();
           break;
         }
 
-        for (const call of calls) {
+        const assistantSoFar = stripReasoning(buffer);
+        const toolMessages: ChatMessage[] = [];
+        const resultsForFallback: string[] = [];
+        for (const call of round.toolCalls) {
           const tool = findTool(call.name);
-          if (!tool || !activeTools.find((t) => t.id === tool.id)) {
-            const reason = tool
+          const isAllowed = !!tool && !!activeTools.find((t) => t.id === tool.id);
+          let content: string;
+          let errorText: string | undefined;
+          if (!tool || !isAllowed) {
+            errorText = tool
               ? `tool "${call.name}" is disabled`
               : `unknown tool "${call.name}"`;
-            buffer = buffer.replace(call.raw, formatToolResult(call.raw, '', reason));
-            continue;
+            content = `ERROR: ${errorText}`;
+          } else {
+            const inv = await runToolCall(
+              tool,
+              { name: call.name, args: call.args, raw: '' },
+              { ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {}) }
+            );
+            errorText = inv.error;
+            content = inv.error ? `ERROR: ${inv.error}` : inv.result;
           }
-          const inv = await runToolCall(tool, call, {
-            ...(abortRef.current?.signal ? { signal: abortRef.current.signal } : {})
+          toolMessages.push({
+            role: 'tool',
+            name: call.name,
+            content,
+            ...(call.id ? { tool_call_id: call.id } : {})
           });
-          buffer = buffer.replace(call.raw, formatToolResult(call.raw, inv.result, inv.error));
+          resultsForFallback.push(`**${call.name}**: ${content}`);
+          // Record for persistence so follow-up turns can rehydrate it.
+          persistedInvocations.push({
+            name: call.name,
+            args: call.args,
+            result: errorText ? '' : content,
+            ...(errorText ? { error: errorText } : {})
+          });
         }
+        lastToolResults = resultsForFallback.join('\n\n');
 
+        workingMessages = [
+          ...messages,
+          { role: 'assistant', content: assistantSoFar },
+          ...toolMessages
+        ];
+        buffer = '';
         await flush();
-        // Continuation: feed the model the original prompt plus everything
-        // the assistant has produced so far (now containing tool results).
-        currentPrompt = prompt + buffer;
-        lastBufferLen = buffer.length;
         iterations++;
       }
 
       if (lastError) {
-        await updateMessageStream(asstMsg.id, buffer);
+        const visibleOnError = stripReasoning(buffer);
+        await updateMessageStream(asstMsg.id, visibleOnError);
         if (lastError.name === 'AbortError') {
           await finishMessage(asstMsg.id, { finish_reason: 'cancelled' });
           setState((s) => ({
@@ -447,7 +527,7 @@ export const useConversation = (conversationId: string) => {
             status: 'cancelled',
             messages: s.messages.map((m) =>
               m.id === asstMsg.id
-                ? { ...m, content: buffer, finish_reason: 'cancelled' }
+                ? { ...m, content: visibleOnError, finish_reason: 'cancelled' }
                 : m
             )
           }));
@@ -459,7 +539,7 @@ export const useConversation = (conversationId: string) => {
             error: lastError!.message,
             messages: s.messages.map((m) =>
               m.id === asstMsg.id
-                ? { ...m, content: buffer, finish_reason: 'error' }
+                ? { ...m, content: visibleOnError, finish_reason: 'error' }
                 : m
             )
           }));
@@ -469,22 +549,37 @@ export const useConversation = (conversationId: string) => {
 
       // Clear the transient pre-stream peek now that we have output.
       setState((s) => ({ ...s, retrievedSnippets: [] }));
-      await updateMessageStream(asstMsg.id, buffer);
+      const finalVisible = stripReasoning(buffer);
+      const finalReasoning = extractReasoning(buffer);
+      await updateMessageStream(asstMsg.id, finalVisible);
       await finishMessage(asstMsg.id, {
         finish_reason: finalFinish,
         token_count: count,
-        model_id: desiredModelId
+        model_id: desiredModelId,
+        ...(finalReasoning ? { reasoning_content: finalReasoning } : {}),
+        ...(persistedInvocations.length > 0
+          ? { tool_calls: persistedInvocations }
+          : {})
       });
       await touchConversation(conv.id);
-      // Embed the assistant turn so future retrieval can surface it.
-      void rag.indexMessage({ messageId: asstMsg.id, content: buffer });
+      // Index the visible answer (not the reasoning) — retrieval should
+      // surface what the user could have read, not the model's scratchpad.
+      void rag.indexMessage({ messageId: asstMsg.id, content: finalVisible });
       setState((s) => ({
         ...s,
         status: 'idle',
         tokenCount: count,
+        thinking: false,
         messages: s.messages.map((m) =>
           m.id === asstMsg.id
-            ? { ...m, content: buffer, token_count: count, finish_reason: finalFinish }
+            ? {
+                ...m,
+                content: finalVisible,
+                reasoning_content: finalReasoning || null,
+                tool_calls: persistedInvocations.length > 0 ? persistedInvocations : null,
+                token_count: count,
+                finish_reason: finalFinish
+              }
             : m
         )
       }));

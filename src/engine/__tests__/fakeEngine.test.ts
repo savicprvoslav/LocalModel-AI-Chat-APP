@@ -10,7 +10,7 @@ describe('fakeEngine', () => {
     let doneInfo: { tokenCount: number; finishReason: string } | undefined;
 
     await engine.streamCompletion(
-      'prompt',
+      { messages: [{ role: 'user', content: 'prompt' }] },
       { temperature: 0.7, maxTokens: 100 },
       {
         onToken: (t) => tokens.push(t),
@@ -40,7 +40,7 @@ describe('fakeEngine', () => {
 
     setTimeout(() => ctrl.abort(), 25);
     await engine.streamCompletion(
-      'p',
+      { messages: [{ role: 'user', content: 'p' }] },
       { temperature: 0, maxTokens: 100, signal: ctrl.signal },
       {
         onToken: (t) => tokens.push(t),
@@ -60,7 +60,7 @@ describe('fakeEngine', () => {
     const engine = createFakeEngine({ scriptedResponse: 'x' });
     await expect(
       engine.streamCompletion(
-        'p',
+        { messages: [{ role: 'user', content: 'p' }] },
         { temperature: 0, maxTokens: 1 },
         { onToken: () => undefined, onDone: () => undefined, onError: () => undefined }
       )
@@ -72,7 +72,7 @@ describe('fakeEngine', () => {
     await engine.load('/fake');
     const errors: Error[] = [];
     await engine.streamCompletion(
-      'p',
+      { messages: [{ role: 'user', content: 'p' }] },
       { temperature: 0, maxTokens: 1 },
       {
         onToken: () => undefined,

@@ -10,8 +10,9 @@ describe('registry defaults', () => {
     const ids = list.map((t) => t.id);
     expect(ids).toContain('calculator');
     expect(ids).toContain('current_time');
-    expect(ids).toContain('search_conversations');
     expect(ids).not.toContain('web_search');
+    expect(ids).not.toContain('http_request');
+    expect(ids).not.toContain('fetch_url');
   });
 
   it('per-tool override turns a network tool on', () => {

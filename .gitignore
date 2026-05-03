@@ -47,3 +47,7 @@ yarn-error.*
 .vscode/
 .idea/
 *.swp
+
+# Local-only secrets / API keys (each developer keeps their own)
+# See src/config/secrets.example.ts for the expected shape.
+src/config/secrets.local.ts

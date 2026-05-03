@@ -1,6 +1,6 @@
 import type { Message } from '@/db/messages';
 import type { Tool } from '@/tools/types';
-import { renderToolsBlock } from '@/tools/systemPrompt';
+import type { ChatMessage } from '@/engine/types';
 import { BASE_SYSTEM_PROMPT } from './baseSystemPrompt';
 
 export type ProjectEntityRef = { name: string; description: string };
@@ -40,6 +40,13 @@ export type BuildPromptArgs = {
 
 export type BuildPromptResult = {
   text: string;
+  dropped: number;
+  systemTokensApprox: number;
+  historyTokensApprox: number;
+};
+
+export type BuildMessagesResult = {
+  messages: ChatMessage[];
   dropped: number;
   systemTokensApprox: number;
   historyTokensApprox: number;
@@ -87,8 +94,11 @@ const composeSystem = (a: BuildPromptArgs): string => {
   if (projectBlock) parts.push(projectBlock);
   const retrievalBlock = composeRetrievalBlock(a.relevantSnippets);
   if (retrievalBlock) parts.push(retrievalBlock);
-  const toolsBlock = a.tools && a.tools.length > 0 ? renderToolsBlock(a.tools) : '';
-  if (toolsBlock) parts.push(toolsBlock);
+  // NOTE: tools are no longer described in the system prompt. They flow
+  // through llama.rn's native tool-calling API (`completion({tools, jinja})`),
+  // which uses each model's own template. Hand-rolled tool descriptions in
+  // the system prompt fight what the model was trained on and produced
+  // hallucinated tool calls — see the project history for details.
   if (a.conversationSystemPrompt.trim()) parts.push(a.conversationSystemPrompt.trim());
   return parts.join('\n\n');
 };
@@ -177,6 +187,111 @@ export const buildPrompt = (args: BuildPromptArgs): BuildPromptResult => {
   const text = sysBlock + historyText + newTurn;
   return {
     text,
+    dropped: droppedMessages,
+    systemTokensApprox: sysTokens,
+    historyTokensApprox: used - fixedTokens
+  };
+};
+
+/**
+ * Build a structured `messages` array consumed by `engine.streamCompletion`.
+ *
+ * The engine passes these straight to llama.rn with `jinja: true`, so each
+ * model formats them with its own native chat template — Qwen ChatML, Phi-4,
+ * Gemma, Llama 3.x are all handled automatically.
+ *
+ * Same context-budget logic as `buildPrompt` (drop oldest pairs first; drop
+ * retrieval snippets if they push us over budget) but emits structured
+ * messages instead of a flat string.
+ */
+export const buildMessages = (args: BuildPromptArgs): BuildMessagesResult => {
+  const budget = args.contextWindow - args.reservedForResponse - SAFETY;
+  if (budget <= 0) throw new Error('context window too small for reserved response');
+
+  let effectiveArgs = args;
+  let sys = composeSystem(effectiveArgs);
+  const userTurn = args.newUserTurn;
+  const userTokens = approxTokens(userTurn);
+
+  if (
+    approxTokens(sys) + userTokens > budget &&
+    args.relevantSnippets &&
+    args.relevantSnippets.length > 0
+  ) {
+    const noSnippets: BuildPromptArgs = { ...args };
+    delete (noSnippets as Partial<BuildPromptArgs>).relevantSnippets;
+    effectiveArgs = noSnippets;
+    sys = composeSystem(effectiveArgs);
+  }
+
+  const sysTokens = approxTokens(sys);
+  const fixedTokens = sysTokens + userTokens;
+
+  if (fixedTokens > budget) {
+    throw new Error('Message too long for current context window');
+  }
+
+  // Walk history newest→oldest, including pairs (user+assistant).
+  type Pair = { user?: Message; assistant?: Message };
+  const pairs: Pair[] = [];
+  for (let i = args.history.length - 1; i >= 0; i--) {
+    const m = args.history[i];
+    if (!m) continue;
+    if (m.role === 'assistant') {
+      const prev = i > 0 ? args.history[i - 1] : undefined;
+      if (prev && prev.role === 'user') {
+        pairs.push({ user: prev, assistant: m });
+        i -= 1;
+      } else {
+        pairs.push({ assistant: m });
+      }
+    } else if (m.role === 'user') {
+      pairs.push({ user: m });
+    }
+  }
+
+  let used = fixedTokens;
+  const includedPairs: Pair[] = [];
+  for (const pair of pairs) {
+    const tk =
+      (pair.user ? approxTokens(pair.user.content) : 0) +
+      (pair.assistant ? approxTokens(pair.assistant.content) : 0);
+    if (used + tk > budget) break;
+    used += tk;
+    includedPairs.push(pair);
+  }
+
+  const droppedMessages = pairs
+    .slice(includedPairs.length)
+    .reduce((sum, p) => sum + (p.user ? 1 : 0) + (p.assistant ? 1 : 0), 0);
+
+  // Render included pairs oldest→newest. After each persisted assistant
+  // turn, expand any recorded tool invocations into `role:'tool'` messages
+  // so follow-up turns can reference the raw tool data — e.g. "what was
+  // the humidity?" still has the weather payload in context even if the
+  // assistant's synthesized answer didn't mention it.
+  const messages: ChatMessage[] = [];
+  if (sys) messages.push({ role: 'system', content: sys });
+  for (const pair of includedPairs.slice().reverse()) {
+    if (pair.user) messages.push({ role: 'user', content: pair.user.content });
+    if (pair.assistant) {
+      messages.push({ role: 'assistant', content: pair.assistant.content });
+      const calls = pair.assistant.tool_calls;
+      if (calls && calls.length > 0) {
+        for (const call of calls) {
+          messages.push({
+            role: 'tool',
+            name: call.name,
+            content: call.error ? `ERROR: ${call.error}` : call.result
+          });
+        }
+      }
+    }
+  }
+  messages.push({ role: 'user', content: userTurn });
+
+  return {
+    messages,
     dropped: droppedMessages,
     systemTokensApprox: sysTokens,
     historyTokensApprox: used - fixedTokens

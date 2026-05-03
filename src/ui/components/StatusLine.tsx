@@ -10,7 +10,7 @@ export type StatusLineState =
       modelId: string;
       charCount: number;
     }
-  | { kind: 'streaming'; tokenCount: number; tokRate: number }
+  | { kind: 'streaming'; tokenCount: number; tokRate: number; thinking?: boolean }
   | { kind: 'warming' }
   | { kind: 'error'; reason: string }
   | { kind: 'ctxFull' };
@@ -43,7 +43,13 @@ export const StatusLine = ({ state, onRetry }: Props) => {
       right = `${state.charCount} chars`;
       break;
     case 'streaming':
-      left = `● generating · ${state.tokenCount} tok · ${state.tokRate.toFixed(0)} tok/s`;
+      // While the model is inside a `<think>` block, the visible message
+      // stays empty — the user needs a signal that something IS happening.
+      // Distinct prefix + label so the reasoning phase reads differently
+      // from the answer-streaming phase.
+      left = state.thinking
+        ? `◌ thinking · ${state.tokenCount} tok · ${state.tokRate.toFixed(0)} tok/s`
+        : `● generating · ${state.tokenCount} tok · ${state.tokRate.toFixed(0)} tok/s`;
       warm = true;
       break;
     case 'warming':
@@ -74,7 +80,10 @@ export const StatusLine = ({ state, onRetry }: Props) => {
         justifyContent: 'space-between'
       }}
     >
-      <Text style={{ ...t.type.meta, color }} numberOfLines={1}>
+      <Text
+        style={{ ...t.type.meta, color, flex: 1, marginRight: t.spacing.sm }}
+        numberOfLines={state.kind === 'error' ? undefined : 1}
+      >
         {left}
       </Text>
       {right ? (
@@ -84,7 +93,7 @@ export const StatusLine = ({ state, onRetry }: Props) => {
   );
 
   if (isRetryable) {
-    return <Pressable onPress={onRetry}>{inner}</Pressable>;
+    return <Pressable onPress={onRetry}>{inner} TEST</Pressable>;
   }
   return inner;
 };

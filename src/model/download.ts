@@ -24,22 +24,36 @@ export const downloadModel = async (
     throw new Error(`Need ${gapMB} MB more free disk space`);
   }
 
-  // Resume if a partial download exists at target.
+  // Inspect what's already at the target. HuggingFace's Xet CDN serves files
+  // through signed S3 URLs that don't honor Range headers reliably, so any
+  // partial download we left behind can't be resumed safely — we drop it and
+  // re-fetch from byte 0 instead.
   const partial = await FS.getInfoAsync(target);
   const partialSize =
     partial.exists && 'size' in partial && typeof partial.size === 'number'
       ? partial.size
       : 0;
+  console.log(
+    `[download] ${entry.id}: target=${target} onDisk=${partialSize} expected=${entry.sizeBytes}`
+  );
+
+  if (partialSize > 0 && partialSize < entry.sizeBytes) {
+    console.log(`[download] ${entry.id}: partial smaller than expected — discarding and restarting`);
+    await FS.deleteAsync(target, { idempotent: true });
+  } else if (partialSize >= entry.sizeBytes) {
+    console.log(`[download] ${entry.id}: file already complete on disk — skipping download`);
+    opts.onProgress?.(1);
+    return target;
+  }
 
   const resumable = FS.createDownloadResumable(
     entry.url,
     target,
-    partialSize ? { headers: { Range: `bytes=${partialSize}-` } } : {},
+    {},
     (progress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => {
       if (opts.signal?.aborted) return;
       const total = progress.totalBytesExpectedToWrite || entry.sizeBytes;
-      const written = partialSize + progress.totalBytesWritten;
-      opts.onProgress?.(Math.min(1, written / total));
+      opts.onProgress?.(Math.min(1, progress.totalBytesWritten / total));
     }
   );
 
@@ -51,6 +65,22 @@ export const downloadModel = async (
 
   const result = await resumable.downloadAsync();
   if (!result) throw new Error('download returned no result');
+
+  // Verify the size we got actually matches what the catalog promised. The
+  // common failure mode without this check is silently writing a tiny redirect
+  // body or 0-byte file to disk, which then surfaces as "model failed to
+  // load" deep in llama.rn.
+  const after = await FS.getInfoAsync(target);
+  const finalSize =
+    after.exists && 'size' in after && typeof after.size === 'number' ? after.size : 0;
+  console.log(`[download] ${entry.id}: downloaded=${finalSize} bytes`);
+  if (finalSize < entry.sizeBytes * 0.9) {
+    await FS.deleteAsync(target, { idempotent: true });
+    throw new Error(
+      `Download truncated: got ${finalSize} bytes, expected ~${entry.sizeBytes}. ` +
+        `URL may be unreachable or returned a redirect body instead of the file.`
+    );
+  }
 
   if (!opts.skipShaCheck) {
     // Note: hashing a 2GB file via base64 in JS is slow (~30s+).
