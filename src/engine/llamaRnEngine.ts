@@ -111,10 +111,15 @@ export const llamaRnEngine: ChatEngine = {
     const info = await FS.getInfoAsync(modelPath);
     const size =
       info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+    // Android's expo-file-system legacy module requires BOTH `length` and
+    // `position` for a partial read; passing only `length` falls through to a
+    // full-file read, which for a 2GB GGUF rejects with an
+    // ExponentFileSystem.readAsStringAsync error. iOS handles it either way.
     const head = info.exists
       ? await FS.readAsStringAsync(modelPath, {
           encoding: FS.EncodingType.Base64,
-          length: 8
+          length: 8,
+          position: 0
         })
       : '';
     // Base64 encoding of "GGUF" is "R0dVRg==", so the prefix is "R0dVRg".

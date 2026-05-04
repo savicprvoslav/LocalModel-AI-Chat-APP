@@ -1,6 +1,6 @@
 # Local Chat
 
-Private, on-device AI chat for iOS (Android in progress). Runs a local LLM via [llama.rn](https://github.com/mybigday/llama.rn) — fully offline after the initial model download. No accounts, no analytics, no cloud round-trips for inference.
+Private, on-device AI chat for iOS and Android. Runs a local LLM via [llama.rn](https://github.com/mybigday/llama.rn) — fully offline after the initial model download. No accounts, no analytics, no cloud round-trips for inference.
 
 > **Status:** early. Works end-to-end on a development build with real models, but not yet App-Store-ready. The codebase is well-tested and the architecture is stable; the rough edges are around model distribution and platform polish.
 
@@ -33,8 +33,8 @@ The minimum bar is: useful chat experience, sensible models that fit on a phone,
 | TypeScript / JS layer | Stable, 133 tests passing across 21 suites |
 | iOS development build | Works end-to-end with real models on device |
 | iOS simulator | Boots and runs UI, but llama.rn requires real device GPU — use `fakeEngine` for simulator |
-| Android | Native build configured; not yet exercised in real-device testing |
-| App Store / TestFlight | Not yet — see [Known limitations](#known-limitations) |
+| Android development build | Verified end-to-end on the Pixel 10 Pro emulator: model download, model load, prompt processing, and streaming inference all work. Real Android device not yet exercised |
+| App Store / TestFlight / Play Store | Not yet — see [Known limitations](#known-limitations) |
 
 ## Try it without a real model
 
@@ -151,7 +151,7 @@ Tests cover engine wiring (against `fakeEngine`), DB repos + migrations, model d
 - **Simulator caveat:** llama.rn requires a real device GPU. The simulator boots the UI but model load fails. Use `fakeEngine` to develop UI flows.
 - **Catalog hashes:** the bundled catalog ships without `sha256` for now. The downloader falls back to size + GGUF magic-header validation. Real shipping builds should fill the hashes in.
 - **Context window:** capped at 4096 tokens per conversation. Phi-4-mini supports 128K natively but we don't yet expose a per-conversation context override.
-- **Android:** the native build is configured but not exercised in real-device testing. Bug reports welcome.
+- **Android emulator:** verified end-to-end on the Pixel 10 Pro AVD with NDK 27.1.12297006. Bump the AVD's `hw.ramSize` to **at least 8192** (8 GB) before running — the default 2 GB AVD memory will OOM-kill the app during model warmup. Real Android device inference hasn't been verified by the maintainer; bug reports welcome.
 - **HTTP write methods:** `http_request` only executes GET / HEAD today. POST / PUT / DELETE / PATCH need a user-confirmation UI before they're enabled.
 - **Embedding store:** vectors are JSON-encoded and similarity is computed in JS. Fast enough for personal-scale corpora; would need `sqlite-vec` for thousands+ messages.
 
