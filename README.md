@@ -100,7 +100,21 @@ Tools are off by default. Turn them on in Settings → Tools (master gate + per-
 
 API keys for `web_search` and `weather` go in `src/config/secrets.local.ts` (gitignored). See `src/config/secrets.example.ts` for the shape.
 
-## Architecture
+## Documentation
+
+Deep documentation lives in [docs/](./docs/):
+
+- [Architecture](./docs/architecture.md) — layered structure, boundary rules, request lifecycle, key patterns
+- [Engine](./docs/engine.md) — `llama.rn` integration, native Jinja chat templates, streaming, reasoning extraction
+- [Models](./docs/models.md) — the catalog, why each model, GGUF format, download flow
+- [Tools](./docs/tools.md) — registry, OpenAI-spec conversion, the tool-call iteration loop
+- [RAG](./docs/rag.md) — hybrid retrieval (FTS5 + dense vectors), entity extraction
+- [Database](./docs/database.md) — SQLite schema, migrations, repos pattern
+- [Model Hosting](./docs/MODEL_HOSTING.md) — license review, self-hosting checklist
+
+Start with [docs/architecture.md](./docs/architecture.md) for the high-level tour.
+
+## Project layout
 
 ```
 app/                      Expo Router routes
