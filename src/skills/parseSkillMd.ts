@@ -31,7 +31,8 @@ export type ParsedSkill = {
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 export const parseSkillMd = (raw: string): ParsedSkill => {
-  const text = raw.replace(/^﻿/, '').trimStart();
+  // Strip a leading UTF-8 BOM (U+FEFF) if present.
+  const text = raw.replace(/^\uFEFF/, '').trimStart();
   const m = FRONTMATTER_RE.exec(text);
   if (!m) {
     throw new Error(

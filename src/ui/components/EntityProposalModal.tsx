@@ -69,7 +69,7 @@ export const EntityProposalModal = ({
             Suggested entities
           </Text>
           <Text style={{ ...t.type.meta, color: t.colors.text.tertiary, marginBottom: t.spacing.md }}>
-            Review what the model picked out. Selected items will be added to the project's
+            Review what the model picked out. Selected items will be added to the project&apos;s
             entities and prepended to every conversation here.
           </Text>
 
@@ -81,7 +81,7 @@ export const EntityProposalModal = ({
           ) : proposals.length === 0 ? (
             <View style={{ paddingVertical: t.spacing.xl }}>
               <Text style={{ ...t.type.bodyAi, color: t.colors.text.secondary }}>
-                Nothing new to add. The model didn't find anything worth pinning beyond what's
+                Nothing new to add. The model didn&apos;t find anything worth pinning beyond what&apos;s
                 already in the project.
               </Text>
             </View>

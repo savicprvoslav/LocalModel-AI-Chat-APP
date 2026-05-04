@@ -112,7 +112,6 @@ export const Composer = ({
       inputRef.current?.focus();
     }, 250);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Live-update the typing state with the current character count.

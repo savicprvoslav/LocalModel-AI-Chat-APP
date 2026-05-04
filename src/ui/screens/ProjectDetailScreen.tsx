@@ -188,8 +188,8 @@ export const ProjectDetailScreen = ({ projectId }: Props) => {
               marginBottom: t.spacing.sm
             }}
           >
-            People, places, or things the assistant should know. Each entity becomes a "name:
-            description" line in the system prompt.
+            People, places, or things the assistant should know. Each entity becomes a &quot;name:
+            description&quot; line in the system prompt.
           </Text>
           {entities.length === 0 ? (
             <Pressable

@@ -27,4 +27,10 @@ describe('model/download', () => {
     const entry = { ...CATALOG[0]!, sha256: 'WRONG_HASH', sizeBytes: 100 };
     await expect(downloadModel(entry, { skipShaCheck: false })).rejects.toThrow(/sha-256/i);
   });
+
+  it('skips SHA verification when catalog entry has no sha256', async () => {
+    const entry = { ...CATALOG[0]!, sizeBytes: 100 };
+    delete (entry as { sha256?: string }).sha256;
+    await expect(downloadModel(entry, { skipShaCheck: false })).resolves.toBeDefined();
+  });
 });

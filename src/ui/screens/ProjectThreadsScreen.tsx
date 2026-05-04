@@ -206,7 +206,7 @@ export const ProjectThreadsScreen = ({ projectId }: Props) => {
               textAlign: 'center'
             }}
           >
-            Conversations you start here will inherit the project's notes and entities.
+            Conversations you start here will inherit the project&apos;s notes and entities.
           </Text>
           <Pressable onPress={newThread}>
             <Text style={{ ...t.type.label, color: t.colors.text.primary }}>

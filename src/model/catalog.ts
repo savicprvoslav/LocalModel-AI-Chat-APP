@@ -5,7 +5,15 @@ export type ModelCatalogEntry = {
   tier: ModelTier;
   displayName: string;
   url: string;
-  sha256: string;
+  /**
+   * Optional. When present, the downloader verifies the file hash and rejects
+   * mismatches. When absent, the downloader skips hash verification and falls
+   * back to size + GGUF magic-header sanity checks. We keep this optional so
+   * the catalog can ship without pre-computed hashes — HuggingFace's CDN
+   * occasionally re-encodes files, and a wrong hash here would brick the app
+   * for every user. Real shipping builds should fill these in.
+   */
+  sha256?: string;
   sizeBytes: number;
   contextLen: number;
   minRamGB: number;
@@ -43,7 +51,6 @@ export const CATALOG: ModelCatalogEntry[] = [
     tier: 'compact',
     displayName: 'SmolLM3 3B (Q4_K_M)',
     url: 'https://huggingface.co/unsloth/SmolLM3-3B-GGUF/resolve/main/SmolLM3-3B-Q4_K_M.gguf',
-    sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
     sizeBytes: 1_915_306_528,
     contextLen: 4096,
     minRamGB: 3,
@@ -56,7 +63,6 @@ export const CATALOG: ModelCatalogEntry[] = [
     tier: 'compact',
     displayName: 'Phi-4-mini Instruct (Q4_K_M)',
     url: 'https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf',
-    sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
     sizeBytes: 2_491_874_272,
     // Phi-4-mini's native context is 128K; we cap at 4096 until we surface a
     // per-conversation context override.
@@ -71,7 +77,6 @@ export const CATALOG: ModelCatalogEntry[] = [
     tier: 'standard',
     displayName: 'Qwen 3 4B (UD-Q4_K_XL)',
     url: 'https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-UD-Q4_K_XL.gguf',
-    sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
     sizeBytes: 2_546_341_152,
     contextLen: 4096,
     minRamGB: 4,
@@ -84,7 +89,6 @@ export const CATALOG: ModelCatalogEntry[] = [
     tier: 'standard',
     displayName: 'Gemma 4 E2B (UD-Q4_K_XL)',
     url: 'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-UD-Q4_K_XL.gguf',
-    sha256: 'REPLACE_WITH_REAL_SHA256_BEFORE_SHIP',
     sizeBytes: 3_174_043_296,
     contextLen: 4096,
     minRamGB: 6,

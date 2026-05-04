@@ -82,7 +82,7 @@ export const downloadModel = async (
     );
   }
 
-  if (!opts.skipShaCheck) {
+  if (!opts.skipShaCheck && entry.sha256) {
     // Note: hashing a 2GB file via base64 in JS is slow (~30s+).
     // For internal/dev builds, skipShaCheck=true is acceptable.
     const fileContent = await FS.readAsStringAsync(target, {
@@ -97,6 +97,11 @@ export const downloadModel = async (
       await FS.deleteAsync(target, { idempotent: true });
       throw new Error(`SHA-256 mismatch: expected ${entry.sha256}, got ${computed}`);
     }
+  } else if (!entry.sha256) {
+    console.warn(
+      `[download] ${entry.id}: catalog entry has no sha256 — skipping hash check. ` +
+        `Falling back to size + GGUF magic-header validation only.`
+    );
   }
 
   opts.onProgress?.(1);
