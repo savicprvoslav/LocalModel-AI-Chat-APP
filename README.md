@@ -2,6 +2,13 @@
 
 Private, on-device AI chat for iOS and Android. Runs a local LLM via [llama.rn](https://github.com/mybigday/llama.rn) — fully offline after the initial model download. No accounts, no analytics, no cloud round-trips for inference.
 
+<img  height="600" alt="image" src="https://github.com/user-attachments/assets/f91a6221-b3b0-429e-b533-33d44ccbba13" />
+<img  height="600" alt="image" src="https://github.com/user-attachments/assets/0acbb6b4-4c20-4b27-babb-7fcd5d37a3a7" />
+
+
+
+
+
 > **Status:** early. Works end-to-end on a development build with real models, but not yet App-Store-ready. The codebase is well-tested and the architecture is stable; the rough edges are around model distribution and platform polish.
 
 ## Why
