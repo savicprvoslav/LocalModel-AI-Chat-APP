@@ -4,6 +4,10 @@ Private, on-device AI chat for iOS and Android. Runs a local LLM via [llama.rn](
 
 <img  height="600" alt="image" src="https://github.com/user-attachments/assets/f91a6221-b3b0-429e-b533-33d44ccbba13" />
 <img  height="600" alt="image" src="https://github.com/user-attachments/assets/0acbb6b4-4c20-4b27-babb-7fcd5d37a3a7" />
+<img height="600"  alt="image" src="https://github.com/user-attachments/assets/8cdcc54a-1ec0-41bb-92be-36d4d60e6d9a" />
+<img height="600"  alt="image" src="https://github.com/user-attachments/assets/67379946-192f-405c-aced-4308eae765d8" />
+
+
 
 
 
