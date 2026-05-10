@@ -85,6 +85,18 @@ export const CATALOG: ModelCatalogEntry[] = [
       'best tool calling on-device — Qwen 3 is natively trained on ChatML tool format; reliable for web_search / weather / http_request flows'
   },
   {
+    id: 'qwen3.5-4b-q4',
+    tier: 'standard',
+    displayName: 'Qwen 3.5 4B (UD-Q4_K_XL)',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-UD-Q4_K_XL.gguf',
+    sizeBytes: 3_124_576_256,
+    contextLen: 32768,
+    minRamGB: 4,
+    recommendedRamGB: 6,
+    goodFor:
+      'state-of-the-art reasoning for <7B class — massive context window upgrade and significantly improved logic for coding and math over Qwen 3'
+  },
+  {
     id: 'gemma-4-e2b-it-q4',
     tier: 'standard',
     displayName: 'Gemma 4 E2B (UD-Q4_K_XL)',

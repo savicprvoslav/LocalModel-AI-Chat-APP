@@ -180,6 +180,7 @@ The model catalog lives in [src/model/catalog.ts](src/model/catalog.ts). All ent
 | Compact | SmolLM3 3B | ~1.9 GB | 3 GB | Fastest cold start; useful fallback |
 | Compact | Phi-4-mini Instruct | ~2.5 GB | 4 GB | Best stability / quality balance on iPhone; MIT |
 | Standard | Qwen 3 4B | ~2.5 GB | 4 GB | Best tool calling; natively trained on ChatML tools |
+| Standard | Qwen 3.5 4B | ~3.1 GB | 4 GB | Best reasoning at <7B; 32K context, improved coding & math |
 | Standard | Gemma 4 E2B | ~3.2 GB | 6 GB | Newest; multimodal-ready model, text-only path here |
 
 Multiple models can coexist on the device. One model is active at a time.
