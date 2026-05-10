@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../theme/useTheme';
 import { Message } from '@/db/messages';
 import { stripReasoning } from '@/chat/reasoning';
 import { StreamingCursor } from './StreamingCursor';
+import { hapticSuccess } from '@/haptics';
 
 const formatTime = (ts: number): string => {
   const d = new Date(ts);
@@ -47,6 +49,7 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
   const indexStr = String(index).padStart(2, '0');
   const [showThinking, setShowThinking] = useState(false);
   const [showTools, setShowTools] = useState(false);
+  const [copied, setCopied] = useState(false);
   const reasoning = message.reasoning_content?.trim();
   const hasReasoning = !!reasoning && message.role === 'assistant';
   const toolCalls = message.tool_calls ?? [];
@@ -56,9 +59,21 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
       ? toolCalls[0]?.name ?? 'tool'
       : `${toolCalls.length} tools`;
 
+  const handleLongPress = useCallback(() => {
+    const text =
+      message.role === 'assistant'
+        ? stripReasoning(message.content)
+        : message.content;
+    void Clipboard.setStringAsync(text ?? '');
+    hapticSuccess();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [message.content, message.role]);
+
   if (message.role === 'user') {
     return (
-      <View
+      <Pressable
+        onLongPress={handleLongPress}
         style={{
           flexDirection: 'row',
           gap: t.spacing.md + 2,
@@ -84,19 +99,20 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
           <Text
             style={{
               ...t.type.metaV2,
-              color: t.colors.text.quiet,
+              color: copied ? t.colors.accent.warm : t.colors.text.quiet,
               marginTop: 6
             }}
           >
-            {metaForMessage(message, false)}
+            {copied ? 'Copied' : metaForMessage(message, false)}
           </Text>
         </View>
-      </View>
+      </Pressable>
     );
   }
 
   return (
-    <View
+    <Pressable
+      onLongPress={handleLongPress}
       style={{
         flexDirection: 'row',
         gap: t.spacing.md + 2,
@@ -242,13 +258,13 @@ export const MessageBubble = ({ message, isStreaming, index }: Props) => {
         <Text
           style={{
             ...t.type.metaV2,
-            color: t.colors.text.quiet,
+            color: copied ? t.colors.accent.warm : t.colors.text.quiet,
             marginTop: 6
           }}
         >
-          {metaForMessage(message, isStreaming)}
+          {copied ? 'Copied' : metaForMessage(message, isStreaming)}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 };
